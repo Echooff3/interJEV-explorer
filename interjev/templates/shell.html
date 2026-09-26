@@ -70,10 +70,23 @@
   .dialog .body { display: flex; gap: 14px; padding: 16px 16px 6px; line-height: 1.45; }
   .dialog .body .icon { font-size: 30px; line-height: 1; }
   .dialog .body p { margin: 0 0 10px; }
-  .dialog .buttons { display: flex; justify-content: flex-end; padding: 6px 16px 14px; }
-  .dialog .buttons button { width: 84px; height: 24px; border-radius: 3px; border: 1px solid #003c74; font: inherit;
+  .dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 6px 16px 14px; }
+  .dialog .buttons button { width: auto; min-width: 84px; padding: 0 12px; height: 24px; border-radius: 3px; border: 1px solid #003c74; font: inherit;
                             background: linear-gradient(#fff, #e3e0d0); color: #000; }
   .dialog .buttons button:hover { background: linear-gradient(#fff, #f3d99a); }
+  .dialog .err { color: #b00020; margin: 0 16px 8px; }
+  .dialog .err:empty { display: none; }
+
+  /* Camcorder-style "REC" bug, shown while this session is being recorded */
+  .rec { display: flex; align-items: center; gap: 6px; width: auto; height: 26px; padding: 0 10px; margin-left: 4px;
+         border-radius: 13px; font: 700 12px/1 system-ui, sans-serif; letter-spacing: .08em; color: #d11a2a;
+         background: color-mix(in srgb, #d11a2a 12%, transparent); border: 1px solid color-mix(in srgb, #d11a2a 45%, transparent); }
+  .rec[hidden] { display: none; }
+  .rec:hover:not(:disabled) { background: color-mix(in srgb, #d11a2a 20%, transparent); }
+  .rec i { width: 9px; height: 9px; border-radius: 50%; background: #e0202f; animation: blink 1.2s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: .15; } }
+  @media (prefers-color-scheme: dark) { .rec { color: #ff6b76; } }
+  @media (prefers-reduced-motion: reduce) { .rec i { animation: none; } }
 </style>
 </head>
 <body>
@@ -100,6 +113,7 @@
       <input id="address" spellcheck="false" placeholder="Search interJEV or type a URL">
     </form>
     <button id="regen" title="Ask JEV to reimagine this page" disabled>&#10024;</button>
+    <button class="rec" id="rec" hidden title="This session is being recorded. Click to change."><i></i>REC</button>
   </div>
 
   <div class="infobar" id="default-prompt" hidden>
@@ -108,7 +122,7 @@
     <button id="default-no">No</button>
   </div>
 
-  <iframe id="view" name="view" src="{{ start }}"></iframe>
+  <iframe id="view" name="view" src="about:blank" data-start="{{ start }}"></iframe>
 
   <div class="modal" id="notice" role="dialog" aria-modal="true" aria-labelledby="notice-title">
     <div class="dialog">
@@ -116,13 +130,17 @@
       <div class="body">
         <div class="icon" aria-hidden="true">&#9888;&#65039;</div>
         <div>
-          <p><strong>Heads up: this is a demo, and we're recording.</strong></p>
-          <p>Everything you search for and every page JEV creates is logged so we can see what JEV
-             comes up with.</p>
-          <p>Please don't type anything personal or sensitive.</p>
+          <p><strong>Heads up: this is a demo, and we'd like to record it.</strong></p>
+          <p>With recording on, everything you search for and every page JEV creates is logged so we
+             can see what JEV comes up with. Please don't type anything personal or sensitive.</p>
+          <p>Do you want to allow interJEV to record this session?</p>
         </div>
       </div>
-      <div class="buttons"><button id="notice-ok">OK</button></div>
+      <p class="err" id="notice-err"></p>
+      <div class="buttons">
+        <button id="notice-yes">Yes, record</button>
+        <button id="notice-no">No, don't record</button>
+      </div>
     </div>
   </div>
 
@@ -245,12 +263,46 @@ regen.onclick = () => {
 };
 address.addEventListener('focus', () => address.select());
 
-// Startup notice: shown every time the browser opens.
+// Startup notice: shown every time the browser opens. Nothing loads until the
+// visitor chooses, so an opted-out session is never logged.
 (() => {
   const notice = document.getElementById('notice');
-  const ok = document.getElementById('notice-ok');
-  ok.onclick = () => { notice.hidden = true; address.focus(); };
-  ok.focus();
+  const err = document.getElementById('notice-err');
+  const rec = document.getElementById('rec');
+  const yes = document.getElementById('notice-yes');
+  const no = document.getElementById('notice-no');
+  let started = false;
+
+  async function choose(record) {
+    yes.disabled = no.disabled = true;
+    err.textContent = '';
+    try {
+      const res = await fetch('/api/recording', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record }),
+      });
+      if (!res.ok) throw new Error(res.statusText);
+    } catch (e) {
+      err.textContent = "Couldn't save your choice. Please try again.";
+      return;
+    } finally {
+      yes.disabled = no.disabled = false;
+    }
+    notice.hidden = true;
+    rec.hidden = !record;
+    if (!started) {
+      started = true;
+      view.src = view.dataset.start;
+      document.dispatchEvent(new Event('jev:noticed'));
+    }
+    address.focus();
+  }
+
+  yes.onclick = () => choose(true);
+  no.onclick = () => choose(false);
+  rec.onclick = () => { notice.hidden = false; no.focus(); }; // change your mind mid-session
+  yes.focus();
 })();
 
 // The question every browser of a certain era asked on launch.
@@ -260,10 +312,8 @@ address.addEventListener('focus', () => address.select());
   let asked = false;
   try { asked = localStorage.getItem(KEY) === '1'; } catch (e) {}
   if (asked) return;
-  // Wait until the recording notice has been acknowledged.
-  const show = () => { promptBar.hidden = false; };
-  if (document.getElementById('notice').hidden) show();
-  else document.getElementById('notice-ok').addEventListener('click', show);
+  // Wait until the recording notice has been answered.
+  document.addEventListener('jev:noticed', () => { promptBar.hidden = false; }, { once: true });
   const remember = () => { try { localStorage.setItem(KEY, '1'); } catch (e) {} };
   document.getElementById('default-no').onclick = () => { promptBar.hidden = true; remember(); };
   document.getElementById('default-yes').onclick = () => {

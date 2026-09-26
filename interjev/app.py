@@ -33,12 +33,26 @@ SITE_CSP = (
 
 
 VISITOR_COOKIE = "jev_vid"
+RECORD_COOKIE = "jev_record"  # "off" when the visitor opted out on the startup notice
 
 
 def create_app(client_factory=get_client, recorder=None) -> Flask:
     app = Flask(__name__)
     store = Store()
     recorder = recorder or make_recorder()
+
+    def record(table: str, **fields) -> None:
+        if recording_allowed():
+            recorder.record(table, **fields)
+
+    def recording_allowed() -> bool:
+        return request.cookies.get(RECORD_COOKIE) != "off"
+
+    def outside_shell():
+        """A page opened directly in a tab skips the startup notice, so reopen it inside the shell."""
+        if request.headers.get("Sec-Fetch-Dest") == "document":
+            return redirect("/?" + urlencode({"start": request.full_path.rstrip("?")}))
+        return None
     search_cache: dict[str, list[dict]] = {}
     search_lock = threading.Lock()
 
@@ -55,16 +69,24 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
             resp.set_cookie(VISITOR_COOKIE, uuid.uuid4().hex, max_age=365 * 86400, samesite="Lax", httponly=True)
         return resp
 
+    @app.post("/api/recording")
+    def set_recording():
+        allowed = bool((request.get_json(silent=True) or {}).get("record"))
+        resp = jsonify({"recording": allowed})
+        # A session cookie: the notice asks again every time the browser opens.
+        resp.set_cookie(RECORD_COOKIE, "on" if allowed else "off", samesite="Lax", httponly=True)
+        return resp
+
     @app.get("/home")
     def home():
-        return render_template("home.html")
+        return outside_shell() or render_template("home.html")
 
     @app.get("/results")
     def results():
         q = request.args.get("q", "").strip()
         if not q:
             return redirect("/home")
-        return render_template("results.html", q=q)
+        return outside_shell() or render_template("results.html", q=q)
 
     @app.get("/go")
     def go():
@@ -101,7 +123,7 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
         with search_lock:
             cached = search_cache.get(key)
         if cached is not None:
-            recorder.record("searches", visitor_id=visitor_id(), query=q, results=cached, cached=True)
+            record("searches", visitor_id=visitor_id(), query=q, results=cached, cached=True)
             return cached
         started = time.monotonic()
         model = None
@@ -111,10 +133,10 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
             raw = client.complete(prompts.search_messages(q))
             items = parse_results(raw)
         except JEVError as exc:
-            recorder.record("searches", visitor_id=visitor_id(), query=q, model=model,
+            record("searches", visitor_id=visitor_id(), query=q, model=model,
                             duration_ms=elapsed_ms(started), error=str(exc))
             raise
-        recorder.record("searches", visitor_id=visitor_id(), query=q, results=items, model=model,
+        record("searches", visitor_id=visitor_id(), query=q, results=items, model=model,
                         duration_ms=elapsed_ms(started))
         for item in items:
             host = urlsplit(item["url"]).hostname
@@ -148,6 +170,8 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
         if regen:
             store.drop_page(url)
             return redirect(clean_local)
+        if request.method == "GET" and (bounce := outside_shell()):
+            return bounce
 
         headers = {
             "Content-Security-Policy": SITE_CSP,
@@ -179,6 +203,7 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
         )
 
         request_method = request.method
+        recording = recording_allowed()  # decided now: the generator runs after the request
         event = {
             "visitor_id": visitor_id(),
             "url": url,
@@ -201,7 +226,8 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
                 if tail:
                     yield tail
             except Exception as exc:  # surface failures inside the page
-                recorder.record("pages", **event, html=rw.html, duration_ms=elapsed_ms(started), error=str(exc))
+                if recording:
+                    recorder.record("pages", **event, html=rw.html, duration_ms=elapsed_ms(started), error=str(exc))
                 yield (
                     '<div style="font:14px sans-serif;background:#fee;color:#900;'
                     'border:1px solid #c66;padding:12px;margin:12px">'
@@ -209,8 +235,9 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
                 )
                 return
             page = rw.html
-            recorder.record("pages", **event, title=extract_title(page), html=page,
-                            duration_ms=elapsed_ms(started), error=None if page.strip() else "empty page")
+            if recording:
+                recorder.record("pages", **event, title=extract_title(page), html=page,
+                                duration_ms=elapsed_ms(started), error=None if page.strip() else "empty page")
             if not page.strip():
                 yield "<p>JEV returned an empty page. Try regenerating.</p>"
                 return

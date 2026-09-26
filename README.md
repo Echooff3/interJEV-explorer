@@ -25,8 +25,8 @@ A few nods to Internet Explorer, the browser of yesteryear, are built in:
 - The window title reads "Page Title - interJEV Explorer".
 - The first time you open it, it asks whether you'd like to make interJEV
   Explorer your default browser.
-- On startup, a "Security Alert" dialog warns visitors that their searches and
-  the pages JEV creates are being recorded.
+- On startup, a "Security Alert" dialog asks visitors whether their session
+  may be recorded, with **Yes, record** and **No, don't record** buttons.
 - When JEV can't be reached, you get "interJEV Explorer cannot display the
   webpage" with "Most likely causes" and a **Diagnose Connection Problems**
   button.
@@ -85,7 +85,8 @@ personality.
 
 ## Recording searches and pages
 
-Every search and every page JEV creates is recorded. Each record includes the
+Every search and every page JEV creates is recorded, unless the visitor opts
+out. Each record includes the
 query or URL, the results or full HTML, the model, how long it took, any
 error, and an anonymous visitor id.
 
@@ -95,6 +96,19 @@ error, and an anonymous visitor id.
   `DATABASE_URL`. The `searches` and `pages` tables are created on startup.
   Writes happen on a background thread, so pages never wait on the database.
   If a write fails, that event is printed to the console instead.
+
+**Opting out.** The startup notice asks every visitor whether to record their
+session:
+
+- Nothing loads until they choose. If they choose **No**, the server logs
+  nothing for them, either to the console or to Postgres.
+- The choice is stored in a cookie that ends when the browser closes, so the
+  notice asks again next time.
+- While a session is being recorded, a blinking **● REC** badge shows at the
+  top right. Clicking it reopens the notice so visitors can opt out partway
+  through.
+- A generated link opened directly in a new tab is sent back through the
+  browser frame, so the notice can't be skipped that way.
 
 Some queries to start with:
 

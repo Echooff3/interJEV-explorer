@@ -84,3 +84,34 @@ def test_postgres_recorder_round_trip():
             "SELECT url, method, form, title, html FROM pages").fetchone()
         assert (url, method, form, title) == ("https://snailweekly.net/login", "POST", {"user": "gary"}, "Finals")
         assert html.startswith("<!DOCTYPE html>")
+
+
+def test_opted_out_sessions_are_not_recorded():
+    rec = ListRecorder()
+    client = create_app(client_factory=FakeJEV, recorder=rec).test_client()
+    res = client.post("/api/recording", json={"record": False})
+    assert res.get_json() == {"recording": False}
+    cookie = client.get_cookie("jev_record")
+    assert cookie.value == "off" and cookie.expires is None  # session cookie
+
+    client.get("/api/search?q=secret plans")
+    client.get("/site/snailweekly.net/2026/finals").get_data()
+    client.post("/site/snailweekly.net/login", data={"user": "gary"}).get_data()
+    assert rec.events == []
+
+    # changing your mind mid-session turns recording back on
+    client.post("/api/recording", json={"record": True})
+    client.get("/api/search?q=snails")
+    assert [t for t, _ in rec.events] == ["searches"]
+
+
+def test_pages_opened_directly_in_a_tab_go_through_the_notice():
+    client = create_app(client_factory=FakeJEV, recorder=ListRecorder()).test_client()
+    top = {"Sec-Fetch-Dest": "document"}
+    res = client.get("/site/snailweekly.net/2026/finals?x=1", headers=top)
+    assert res.status_code == 302
+    assert res.headers["Location"] == "/?start=%2Fsite%2Fsnailweekly.net%2F2026%2Ffinals%3Fx%3D1"
+    assert client.get("/results?q=hi", headers=top).status_code == 302
+    assert client.get("/home", headers=top).status_code == 302
+    # inside the shell's iframe it loads normally
+    assert client.get("/home", headers={"Sec-Fetch-Dest": "iframe"}).status_code == 200
