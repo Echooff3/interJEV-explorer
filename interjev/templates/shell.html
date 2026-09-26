@@ -4,15 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>interJEV Explorer</title>
+<link rel="icon" href="{{ url_for('static', filename='logo.svg') }}" type="image/svg+xml">
 <style>
   :root {
     --chrome: #e9ecf2; --chrome-edge: #c9ced8; --field: #fff; --text: #1d2330;
-    --muted: #6b7384; --accent: #4f5dff; --btn-hover: #d9dee8;
+    --muted: #6b7384; --accent: #1f6fe0; --btn-hover: #d9dee8;
+    --info: #ffffe1; --info-edge: #d8d29a; --info-text: #1d2330;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --chrome: #23262e; --chrome-edge: #353945; --field: #16181d; --text: #e6e8ee;
-      --muted: #9097a6; --accent: #8c95ff; --btn-hover: #323643;
+      --muted: #9097a6; --accent: #6fb0ff; --btn-hover: #323643;
+      --info: #3a3620; --info-edge: #5a5430; --info-text: #f3eecb;
     }
   }
   * { box-sizing: border-box; }
@@ -21,40 +24,80 @@
          font: 14px system-ui, -apple-system, "Segoe UI", sans-serif; }
   .bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px;
          border-bottom: 1px solid var(--chrome-edge); position: relative; }
-  .brand { font-weight: 700; letter-spacing: -.02em; margin-right: 6px; white-space: nowrap; }
-  .brand span { color: var(--accent); }
+  .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -.02em;
+           margin-right: 6px; white-space: nowrap; }
+  .brand em { font-style: normal; color: var(--accent); }
+  .logo { width: 28px; height: 28px; flex: none; overflow: visible; }
+  .orbit { stroke-dasharray: 100 0; }
+  .loading .orbit { stroke-dasharray: 34 16; animation: whirl .9s linear infinite; }
+  @keyframes whirl { to { stroke-dashoffset: -50; } }
   button { border: 0; background: transparent; color: var(--text); width: 32px; height: 32px;
            border-radius: 8px; font-size: 16px; cursor: pointer; flex: none; }
   button:hover:not(:disabled) { background: var(--btn-hover); }
   button:disabled { opacity: .35; cursor: default; }
-  form { flex: 1; display: flex; min-width: 0; }
-  #address { flex: 1; min-width: 0; height: 34px; border-radius: 17px; border: 1px solid var(--chrome-edge);
-             background: var(--field); color: var(--text); padding: 0 14px; font: inherit; outline: none; }
+  form { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  form label { color: var(--muted); font-size: 13px; }
+  #address { flex: 1; min-width: 0; height: 32px; border-radius: 4px; border: 1px solid var(--chrome-edge);
+             background: var(--field); color: var(--text); padding: 0 10px; font: inherit; outline: none; }
   #address:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
-  .progress { position: absolute; left: 0; bottom: -1px; height: 2px; width: 0; background: var(--accent);
-              opacity: 0; transition: opacity .3s; }
-  .loading .progress { opacity: 1; animation: grow 12s cubic-bezier(.1,.7,.3,1) forwards; }
-  @keyframes grow { from { width: 0 } to { width: 92% } }
-  .status { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+  .infobar { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 13px;
+             background: var(--info); color: var(--info-text); border-bottom: 1px solid var(--info-edge); }
+  .infobar[hidden] { display: none; }
+  .infobar span { flex: 1; }
+  .infobar button { width: auto; height: 26px; padding: 0 12px; font-size: 13px; border: 1px solid var(--info-edge);
+                    background: color-mix(in srgb, var(--field) 70%, transparent); color: inherit; border-radius: 4px; }
+
   iframe { flex: 1; border: 0; width: 100%; background: #fff; }
-  @media (max-width: 600px) { .brand, .status { display: none; } }
+
+  .statusbar { display: flex; align-items: stretch; height: 24px; font-size: 12px; color: var(--muted);
+               border-top: 1px solid var(--chrome-edge); }
+  .statusbar > div { display: flex; align-items: center; gap: 6px; padding: 0 10px; white-space: nowrap; }
+  .statusbar .msg { flex: 1; min-width: 0; overflow: hidden; }
+  .statusbar .msg span { overflow: hidden; text-overflow: ellipsis; }
+  .statusbar .zone, .statusbar .zoom { border-left: 1px solid var(--chrome-edge); }
+  @media (max-width: 600px) { .brand span, form label, .statusbar .zoom { display: none; } }
 </style>
 </head>
 <body>
   <div class="bar" id="bar">
-    <div class="brand">inter<span>JEV</span></div>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <linearGradient id="jb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fc3ff"/><stop offset="1" stop-color="#0b4fb3"/></linearGradient>
+          <linearGradient id="jg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe27a"/><stop offset="1" stop-color="#e59a00"/></linearGradient>
+        </defs>
+        <path class="orbit" pathLength="50" d="M6 40 C 2 28, 30 10, 52 12 C 62 13, 62 20, 56 26" fill="none" stroke="url(#jg)" stroke-width="5" stroke-linecap="round"/>
+        <text x="32" y="50" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-style="italic" font-size="50"
+              text-anchor="middle" fill="url(#jb)" stroke="#083b86" stroke-width="1">J</text>
+        <path class="orbit" pathLength="50" d="M56 26 C 46 38, 18 52, 8 46" fill="none" stroke="url(#jg)" stroke-width="5" stroke-linecap="round"/>
+      </svg>
+      <span>inter<em>JEV</em> Explorer</span>
+    </div>
     <button id="back" title="Back">&#8592;</button>
     <button id="fwd" title="Forward">&#8594;</button>
-    <button id="reload" title="Reload">&#8635;</button>
+    <button id="reload" title="Refresh">&#8635;</button>
     <button id="home" title="Home">&#8962;</button>
     <form id="nav" autocomplete="off">
+      <label for="address">Address</label>
       <input id="address" spellcheck="false" placeholder="Search interJEV or type a URL">
     </form>
     <button id="regen" title="Ask JEV to reimagine this page" disabled>&#10024;</button>
-    <span class="status" id="status"></span>
-    <div class="progress"></div>
   </div>
+
+  <div class="infobar" id="default-prompt" hidden>
+    <span>interJEV Explorer is not currently your default browser. Would you like to make it your default browser?</span>
+    <button id="default-yes">Yes</button>
+    <button id="default-no">No</button>
+  </div>
+
   <iframe id="view" name="view" src="{{ start }}"></iframe>
+
+  <div class="statusbar">
+    <div class="msg"><span id="status">Done</span></div>
+    <div class="zone" title="Pages on interJEV can't load anything from the real internet">&#127760; interJEV | Protected Mode: On</div>
+    <div class="zoom">&#128269; 100%</div>
+  </div>
 
 <script>
 const view = document.getElementById('view');
@@ -62,44 +105,84 @@ const address = document.getElementById('address');
 const bar = document.getElementById('bar');
 const status = document.getElementById('status');
 const regen = document.getElementById('regen');
+let loading = false;
+let pending = '';   // where we're headed, for "Waiting for …"
+let hovered = '';   // link under the pointer, IE-style
 
-function localToDisplay(loc) {
-  const path = loc.pathname, qs = loc.search;
+function localToDisplay(path, qs = '') {
   if (path === '/home') return '';
   if (path === '/results') return 'interjev://search' + qs;
   const m = path.match(/^\/site\/([^/]+)(\/.*)?$/);
   if (m) {
-    let rest = decodeURI(m[2] || '/');
+    const rest = decodeURI(m[2] || '/');
     return 'https://' + m[1] + rest + qs.replace(/([?&])_regen=1&?/, '$1').replace(/[?&]$/, '');
   }
   return path + qs;
 }
 
-function setLoading(on) {
+function hrefToDisplay(href) {
+  try {
+    const u = new URL(href, location.href);
+    if (u.origin !== location.origin) return u.href;
+    return localToDisplay(u.pathname, u.search) || 'interjev://home';
+  } catch (e) { return ''; }
+}
+
+function setLoading(on, target) {
+  loading = on;
   bar.classList.toggle('loading', on);
-  status.textContent = on ? 'JEV is imagining…' : '';
-  if (on) { // restart the progress animation
-    const p = bar.querySelector('.progress');
-    p.style.animation = 'none'; p.offsetWidth; p.style.animation = '';
-  }
+  if (on) pending = target || hovered || pending;
+  else pending = '';
+  renderStatus();
+}
+
+function renderStatus() {
+  if (hovered && !loading) { status.textContent = hovered; return; }
+  if (!loading) { status.textContent = 'Done'; return; }
+  let streaming = false;
+  try { streaming = view.contentDocument.readyState !== 'complete' && view.contentDocument.body; } catch (e) {}
+  const loc = currentLocation();
+  const here = loc ? localToDisplay(loc.pathname, loc.search) : '';
+  status.textContent = streaming && here
+    ? 'Opening page ' + here + '...'
+    : 'Waiting for ' + (pending || 'interjev://home') + '...';
 }
 
 function currentLocation() {
   try { return view.contentWindow.location; } catch (e) { return null; }
 }
 
+// Show a link's (fictional) URL in the status bar on hover, like it's 2003.
+function watchLinks(doc) {
+  if (!doc || doc.__jevWatched) return;
+  doc.__jevWatched = true;
+  doc.addEventListener('mouseover', (e) => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    hovered = a ? hrefToDisplay(a.getAttribute('href')) : '';
+    renderStatus();
+  });
+  doc.addEventListener('mouseleave', () => { hovered = ''; renderStatus(); });
+  doc.addEventListener('submit', (e) => {
+    const action = e.target.getAttribute('action');
+    pending = hrefToDisplay(action || doc.location.href);
+  }, true);
+}
+
 function sync() {
   const loc = currentLocation();
   if (!loc || loc.href === 'about:blank') return;
-  if (document.activeElement !== address) address.value = localToDisplay(loc);
+  if (document.activeElement !== address) address.value = localToDisplay(loc.pathname, loc.search);
   regen.disabled = !loc.pathname.startsWith('/site/');
   try {
+    watchLinks(view.contentDocument);
     const t = view.contentDocument.title;
-    document.title = (t ? t + ' — ' : '') + 'interJEV Explorer';
+    document.title = (t ? t + ' - ' : '') + 'interJEV Explorer';
   } catch (e) {}
+  if (loading) renderStatus();
 }
 
 view.addEventListener('load', () => {
+  hovered = '';
   setLoading(false);
   sync();
   try {
@@ -113,21 +196,40 @@ document.getElementById('nav').addEventListener('submit', (e) => {
   const v = address.value.trim();
   if (!v) return;
   address.blur();
-  setLoading(true);
+  setLoading(true, v);
   view.src = '/go?u=' + encodeURIComponent(v);
 });
 document.getElementById('back').onclick = () => view.contentWindow.history.back();
 document.getElementById('fwd').onclick = () => view.contentWindow.history.forward();
-document.getElementById('reload').onclick = () => { setLoading(true); view.contentWindow.location.reload(); };
+document.getElementById('reload').onclick = () => { setLoading(true, address.value); view.contentWindow.location.reload(); };
 document.getElementById('home').onclick = () => { view.src = '/home'; };
 regen.onclick = () => {
   const loc = currentLocation();
   if (!loc || !loc.pathname.startsWith('/site/')) return;
   const sep = loc.search ? '&' : '?';
-  setLoading(true);
+  setLoading(true, address.value);
   view.contentWindow.location.href = loc.pathname + loc.search + sep + '_regen=1';
 };
 address.addEventListener('focus', () => address.select());
+
+// The question every browser of a certain era asked on launch.
+(() => {
+  const promptBar = document.getElementById('default-prompt');
+  const KEY = 'interjev-default-browser-asked';
+  let asked = false;
+  try { asked = localStorage.getItem(KEY) === '1'; } catch (e) {}
+  if (asked) return;
+  promptBar.hidden = false;
+  const remember = () => { try { localStorage.setItem(KEY, '1'); } catch (e) {} };
+  document.getElementById('default-no').onclick = () => { promptBar.hidden = true; remember(); };
+  document.getElementById('default-yes').onclick = () => {
+    remember();
+    promptBar.querySelector('span').textContent =
+      'interJEV Explorer is now your default browser. (It is not. But we appreciate the gesture.)';
+    promptBar.querySelectorAll('button').forEach((b) => b.remove());
+    setTimeout(() => { promptBar.hidden = true; }, 4000);
+  };
+})();
 </script>
 </body>
 </html>

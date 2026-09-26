@@ -5,7 +5,7 @@ import re
 import threading
 from urllib.parse import urlencode, urlsplit
 
-from flask import Flask, Response, jsonify, redirect, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 from markupsafe import escape
 
 from . import prompts
@@ -170,7 +170,7 @@ def create_app(client_factory=get_client) -> Flask:
                 yield (
                     '<div style="font:14px sans-serif;background:#fee;color:#900;'
                     'border:1px solid #c66;padding:12px;margin:12px">'
-                    f"JEV lost the connection while building this page: {escape(str(exc))}</div>"
+                    f"<b>interJEV Explorer cannot display the rest of this webpage.</b> {escape(str(exc))}</div>"
                 )
                 return
             page = rw.html
@@ -209,9 +209,7 @@ def create_app(client_factory=get_client) -> Flask:
 
     @app.get("/favicon.ico")
     def favicon():
-        svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#4f5dff"/>'
-               '<text x="16" y="23" font-family="sans-serif" font-weight="700" font-size="20" fill="#fff" text-anchor="middle">J</text></svg>')
-        return Response(svg, mimetype="image/svg+xml", headers={"Cache-Control": "max-age=86400"})
+        return redirect(url_for("static", filename="logo.svg"))
 
     def error_page(message: str):
         return render_template("error.html", message=message), 502

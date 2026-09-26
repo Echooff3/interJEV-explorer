@@ -96,3 +96,16 @@ def test_go_routes_urls_and_searches(client):
 
 def test_lucky_goes_to_first_result(client):
     assert client.get("/lucky?q=snails").headers["Location"] == "/site/snailweekly.net/2026/finals"
+
+
+def test_missing_config_shows_cannot_display_page():
+    from interjev.jev import JEVError
+
+    def broken():
+        raise JEVError("OPENROUTER_API_KEY is not set")
+
+    res = create_app(client_factory=broken).test_client().get("/site/x.com/")
+    body = res.get_data(as_text=True)
+    assert res.status_code == 502
+    assert "interJEV Explorer cannot display the webpage" in body
+    assert "OPENROUTER_API_KEY is not set" in body

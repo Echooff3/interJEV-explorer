@@ -6,11 +6,28 @@ that site's HTML on the spot. Every link on a generated page leads to another
 generated page. It's the same idea as the VibeOS demo, applied to the web.
 
 ```
-┌ interJEV ← → ↻ ⌂ [ https://www.snailweekly.net/2026/finals ] ✨ ┐
-│                                                                  │
-│   page HTML streamed from JEV, links rewritten back to JEV       │
-└──────────────────────────────────────────────────────────────────┘
+┌ Ĵ interJEV Explorer ← → ↻ ⌂  Address [ https://www.snailweekly.net/2026/finals ] ✨ ┐
+│ interJEV Explorer is not currently your default browser...            [Yes] [No]  │
+│                                                                                   │
+│   page HTML streamed from JEV, links rewritten back to JEV                        │
+│                                                                                   │
+│ Done                                    🌐 interJEV | Protected Mode: On  🔍 100% │
+└───────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+A few nods to Internet Explorer, the browser of yesteryear, are built in:
+
+- The logo is a blue italic **J** with a gold orbit ring. The ring spins while
+  a page loads, like IE's old throbber.
+- An IE-style status bar at the bottom says "Waiting for …", "Opening page …"
+  and "Done". It shows a link's fake URL when you hover over it, and ends with
+  the "🌐 interJEV | Protected Mode: On" zone and 🔍 100% zoom.
+- The window title reads "Page Title - interJEV Explorer".
+- The first time you open it, it asks whether you'd like to make interJEV
+  Explorer your default browser.
+- When JEV can't be reached, you get "interJEV Explorer cannot display the
+  webpage" with "Most likely causes" and a **Diagnose Connection Problems**
+  button.
 
 ## Quick start
 
