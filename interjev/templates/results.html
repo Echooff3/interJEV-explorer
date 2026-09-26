@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ q }} - interJEV Search</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='search.css') }}">
+</head>
+<body>
+  <header class="top">
+    <a href="/home" class="logo">inter<span>JEV</span></a>
+    <form action="/results" method="get" autocomplete="off">
+      <div class="searchbox">
+        <input name="q" value="{{ q }}" required aria-label="Search">
+        <button title="Search" aria-label="Search">&#9906;</button>
+      </div>
+    </form>
+  </header>
+  <main class="results" id="results">
+    <div class="meta">JEV is imagining results…</div>
+    {% for _ in range(5) %}
+    <div class="result skeleton">
+      <div class="bar" style="width:30%"></div>
+      <div class="bar" style="width:65%;height:18px"></div>
+      <div class="bar" style="width:95%"></div>
+      <div class="bar" style="width:80%"></div>
+    </div>
+    {% endfor %}
+  </main>
+
+<script>
+(async () => {
+  const q = {{ q | tojson }};
+  const box = document.getElementById('results');
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const started = performance.now();
+  try {
+    const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    const secs = ((performance.now() - started) / 1000).toFixed(2);
+    const count = data.results.length;
+    let html = `<div class="meta">About ${(count * 1234567 + q.length * 8191).toLocaleString()} results (${secs} seconds)</div>`;
+    if (!count) html += '<p>JEV found nothing. Try another search.</p>';
+    for (const r of data.results) {
+      html += `<div class="result">
+        <a href="${esc(r.local)}">
+          <div class="url">${esc(r.display_url)}</div>
+          <h3>${esc(r.title)}</h3>
+        </a>
+        <p>${esc(r.snippet)}</p>
+      </div>`;
+    }
+    box.innerHTML = html;
+  } catch (err) {
+    box.innerHTML = `<div class="meta"></div><div class="error"><strong>JEV couldn't search right now.</strong><br>${esc(err.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

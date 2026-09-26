@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cannot display the webpage</title>
+<style>
+  :root { --bg: #fff; --text: #1d2330; --muted: #5f6677; --head: #1f4e9c; --line: #dfe3ea; --btn: #f1f3f7; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16181d; --text: #e6e8ee; --muted: #9ba2b1; --head: #8fb8ff; --line: #2f333d; --btn: #23262e; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  .head { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
+  .head img { width: 44px; height: 44px; flex: none; }
+  h1 { color: var(--head); font-size: 22px; font-weight: 400; margin: 0; }
+  h2 { font-size: 14px; margin: 22px 0 4px; }
+  ul { margin: 0; padding-left: 22px; }
+  li { margin: 2px 0; }
+  code { font-size: 13px; }
+  .detail { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); margin-top: 26px; padding-top: 10px;
+            word-break: break-word; }
+  button { font: inherit; font-size: 13px; padding: 5px 14px; border: 1px solid var(--line); background: var(--btn);
+           color: var(--text); border-radius: 3px; cursor: pointer; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <main>
+    <div class="head">
+      <img src="{{ url_for('static', filename='logo.svg') }}" alt="">
+      <h1>interJEV Explorer cannot display the webpage</h1>
+    </div>
+
+    <h2>Most likely causes:</h2>
+    <ul>
+      <li>You are not connected to JEV.</li>
+      <li><code>OPENROUTER_API_KEY</code> or <code>JEV_MODEL</code> is missing or wrong in your <code>.env</code>.</li>
+      <li>JEV is still imagining this part of the internet.</li>
+    </ul>
+
+    <h2>What you can try:</h2>
+    <ul>
+      <li>Check your <code>.env</code> and restart the server.</li>
+      <li>Run with <code>JEV_MOCK=1</code> to browse offline.</li>
+      <li><a href="/home">Return to the interJEV home page</a>.</li>
+    </ul>
+    <button onclick="location.reload()">Diagnose Connection Problems</button>
+
+    <p class="detail">More information: {{ message }}</p>
+  </main>
+</body>
+</html>

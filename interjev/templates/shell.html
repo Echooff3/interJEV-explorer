@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>interJEV Explorer</title>
+<link rel="icon" href="{{ url_for('static', filename='logo.svg') }}" type="image/svg+xml">
+<style>
+  :root {
+    --chrome: #e9ecf2; --chrome-edge: #c9ced8; --field: #fff; --text: #1d2330;
+    --muted: #6b7384; --accent: #1f6fe0; --btn-hover: #d9dee8;
+    --info: #ffffe1; --info-edge: #d8d29a; --info-text: #1d2330;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --chrome: #23262e; --chrome-edge: #353945; --field: #16181d; --text: #e6e8ee;
+      --muted: #9097a6; --accent: #6fb0ff; --btn-hover: #323643;
+      --info: #3a3620; --info-edge: #5a5430; --info-text: #f3eecb;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--chrome); color: var(--text);
+         font: 14px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+         border-bottom: 1px solid var(--chrome-edge); position: relative; }
+  .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -.02em;
+           margin-right: 6px; white-space: nowrap; }
+  .brand em { font-style: normal; color: var(--accent); }
+  .logo { width: 28px; height: 28px; flex: none; overflow: visible; }
+  .orbit { stroke-dasharray: 100 0; }
+  .loading .orbit { stroke-dasharray: 34 16; animation: whirl .9s linear infinite; }
+  @keyframes whirl { to { stroke-dashoffset: -50; } }
+  button { border: 0; background: transparent; color: var(--text); width: 32px; height: 32px;
+           border-radius: 8px; font-size: 16px; cursor: pointer; flex: none; }
+  button:hover:not(:disabled) { background: var(--btn-hover); }
+  button:disabled { opacity: .35; cursor: default; }
+  form { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  form label { color: var(--muted); font-size: 13px; }
+  #address { flex: 1; min-width: 0; height: 32px; border-radius: 4px; border: 1px solid var(--chrome-edge);
+             background: var(--field); color: var(--text); padding: 0 10px; font: inherit; outline: none; }
+  #address:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+
+  .infobar { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 13px;
+             background: var(--info); color: var(--info-text); border-bottom: 1px solid var(--info-edge); }
+  .infobar[hidden] { display: none; }
+  .infobar span { flex: 1; }
+  .infobar button { width: auto; height: 26px; padding: 0 12px; font-size: 13px; border: 1px solid var(--info-edge);
+                    background: color-mix(in srgb, var(--field) 70%, transparent); color: inherit; border-radius: 4px; }
+
+  iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+
+  .statusbar { display: flex; align-items: stretch; height: 24px; font-size: 12px; color: var(--muted);
+               border-top: 1px solid var(--chrome-edge); }
+  .statusbar > div { display: flex; align-items: center; gap: 6px; padding: 0 10px; white-space: nowrap; }
+  .statusbar .msg { flex: 1; min-width: 0; overflow: hidden; }
+  .statusbar .msg span { overflow: hidden; text-overflow: ellipsis; }
+  .statusbar .zone, .statusbar .zoom { border-left: 1px solid var(--chrome-edge); }
+  @media (max-width: 600px) { .brand span, form label, .statusbar .zoom { display: none; } }
+
+  /* Startup notice, dressed as a classic "Security Alert" dialog */
+  .modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
+           background: rgba(10, 20, 40, .45); z-index: 10; }
+  .modal[hidden] { display: none; }
+  .dialog { width: min(440px, 100%); background: #ece9d8; color: #000; border: 1px solid #0831d9; border-radius: 8px 8px 2px 2px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, .35); font: 13px Tahoma, "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  .dialog .titlebar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; color: #fff; font-weight: 700;
+                      background: linear-gradient(#0a5ae8, #0843c6 45%, #0636b0); text-shadow: 1px 1px #0a2b7a; }
+  .dialog .titlebar span { flex: 1; }
+  .dialog .body { display: flex; gap: 14px; padding: 16px 16px 6px; line-height: 1.45; }
+  .dialog .body .icon { font-size: 30px; line-height: 1; }
+  .dialog .body p { margin: 0 0 10px; }
+  .dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 6px 16px 14px; }
+  .dialog .buttons button { width: auto; min-width: 84px; padding: 0 12px; height: 24px; border-radius: 3px; border: 1px solid #003c74; font: inherit;
+                            background: linear-gradient(#fff, #e3e0d0); color: #000; }
+  .dialog .buttons button:hover { background: linear-gradient(#fff, #f3d99a); }
+  .dialog .err { color: #b00020; margin: 0 16px 8px; }
+  .dialog .err:empty { display: none; }
+
+  /* Camcorder-style "REC" bug, shown while this session is being recorded */
+  .rec { display: flex; align-items: center; gap: 6px; width: auto; height: 26px; padding: 0 10px; margin-left: 4px;
+         border-radius: 13px; font: 700 12px/1 system-ui, sans-serif; letter-spacing: .08em; color: #d11a2a;
+         background: color-mix(in srgb, #d11a2a 12%, transparent); border: 1px solid color-mix(in srgb, #d11a2a 45%, transparent); }
+  .rec[hidden] { display: none; }
+  .rec:hover:not(:disabled) { background: color-mix(in srgb, #d11a2a 20%, transparent); }
+  .rec i { width: 9px; height: 9px; border-radius: 50%; background: #e0202f; animation: blink 1.2s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: .15; } }
+  @media (prefers-color-scheme: dark) { .rec { color: #ff6b76; } }
+  @media (prefers-reduced-motion: reduce) { .rec i { animation: none; } }
+</style>
+</head>
+<body>
+  <div class="bar" id="bar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <linearGradient id="jb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fc3ff"/><stop offset="1" stop-color="#0b4fb3"/></linearGradient>
+          <linearGradient id="jg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe27a"/><stop offset="1" stop-color="#e59a00"/></linearGradient>
+        </defs>
+        <path class="orbit" pathLength="50" d="M6 40 C 2 28, 30 10, 52 12 C 62 13, 62 20, 56 26" fill="none" stroke="url(#jg)" stroke-width="5" stroke-linecap="round"/>
+        <text x="32" y="50" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-style="italic" font-size="50"
+              text-anchor="middle" fill="url(#jb)" stroke="#083b86" stroke-width="1">J</text>
+        <path class="orbit" pathLength="50" d="M56 26 C 46 38, 18 52, 8 46" fill="none" stroke="url(#jg)" stroke-width="5" stroke-linecap="round"/>
+      </svg>
+      <span>inter<em>JEV</em> Explorer</span>
+    </div>
+    <button id="back" title="Back">&#8592;</button>
+    <button id="fwd" title="Forward">&#8594;</button>
+    <button id="reload" title="Refresh">&#8635;</button>
+    <button id="home" title="Home">&#8962;</button>
+    <form id="nav" autocomplete="off">
+      <label for="address">Address</label>
+      <input id="address" spellcheck="false" placeholder="Search interJEV or type a URL">
+    </form>
+    <button id="regen" title="Ask JEV to reimagine this page" disabled>&#10024;</button>
+    <button class="rec" id="rec" hidden title="This session is being recorded. Click to change."><i></i>REC</button>
+  </div>
+
+  <div class="infobar" id="default-prompt" hidden>
+    <span>interJEV Explorer is not currently your default browser. Would you like to make it your default browser?</span>
+    <button id="default-yes">Yes</button>
+    <button id="default-no">No</button>
+  </div>
+
+  <iframe id="view" name="view" src="about:blank" data-start="{{ start }}"></iframe>
+
+  <div class="modal" id="notice" role="dialog" aria-modal="true" aria-labelledby="notice-title">
+    <div class="dialog">
+      <div class="titlebar"><span id="notice-title">Security Alert</span></div>
+      <div class="body">
+        <div class="icon" aria-hidden="true">&#9888;&#65039;</div>
+        <div>
+          <p><strong>Heads up: this is a demo, and we'd like to record it.</strong></p>
+          <p>With recording on, everything you search for and every page JEV creates is logged so we
+             can see what JEV comes up with. Please don't type anything personal or sensitive.</p>
+          <p>Do you want to allow interJEV to record this session?</p>
+        </div>
+      </div>
+      <p class="err" id="notice-err"></p>
+      <div class="buttons">
+        <button id="notice-yes">Yes, record</button>
+        <button id="notice-no">No, don't record</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <div class="msg"><span id="status">Done</span></div>
+    <div class="zone" title="Pages on interJEV can't load anything from the real internet">&#127760; interJEV | Protected Mode: On</div>
+    <div class="zoom">&#128269; 100%</div>
+  </div>
+
+<script>
+const view = document.getElementById('view');
+const address = document.getElementById('address');
+const bar = document.getElementById('bar');
+const status = document.getElementById('status');
+const regen = document.getElementById('regen');
+let loading = false;
+let pending = '';   // where we're headed, for "Waiting for …"
+let hovered = '';   // link under the pointer, IE-style
+
+function localToDisplay(path, qs = '') {
+  if (path === '/home') return '';
+  if (path === '/results') return 'interjev://search' + qs;
+  const m = path.match(/^\/site\/([^/]+)(\/.*)?$/);
+  if (m) {
+    const rest = decodeURI(m[2] || '/');
+    return 'https://' + m[1] + rest + qs.replace(/([?&])_regen=1&?/, '$1').replace(/[?&]$/, '');
+  }
+  return path + qs;
+}
+
+function hrefToDisplay(href) {
+  try {
+    const u = new URL(href, location.href);
+    if (u.origin !== location.origin) return u.href;
+    return localToDisplay(u.pathname, u.search) || 'interjev://home';
+  } catch (e) { return ''; }
+}
+
+function setLoading(on, target) {
+  loading = on;
+  bar.classList.toggle('loading', on);
+  if (on) pending = target || hovered || pending;
+  else pending = '';
+  renderStatus();
+}
+
+function renderStatus() {
+  if (hovered && !loading) { status.textContent = hovered; return; }
+  if (!loading) { status.textContent = 'Done'; return; }
+  let streaming = false;
+  try { streaming = view.contentDocument.readyState !== 'complete' && view.contentDocument.body; } catch (e) {}
+  const loc = currentLocation();
+  const here = loc ? localToDisplay(loc.pathname, loc.search) : '';
+  status.textContent = streaming && here
+    ? 'Opening page ' + here + '...'
+    : 'Waiting for ' + (pending || 'interjev://home') + '...';
+}
+
+function currentLocation() {
+  try { return view.contentWindow.location; } catch (e) { return null; }
+}
+
+// Show a link's (fictional) URL in the status bar on hover, like it's 2003.
+function watchLinks(doc) {
+  if (!doc || doc.__jevWatched) return;
+  doc.__jevWatched = true;
+  doc.addEventListener('mouseover', (e) => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    hovered = a ? hrefToDisplay(a.getAttribute('href')) : '';
+    renderStatus();
+  });
+  doc.addEventListener('mouseleave', () => { hovered = ''; renderStatus(); });
+  doc.addEventListener('submit', (e) => {
+    const action = e.target.getAttribute('action');
+    pending = hrefToDisplay(action || doc.location.href);
+  }, true);
+}
+
+function sync() {
+  const loc = currentLocation();
+  if (!loc || loc.href === 'about:blank') return;
+  if (document.activeElement !== address) address.value = localToDisplay(loc.pathname, loc.search);
+  regen.disabled = !loc.pathname.startsWith('/site/');
+  try {
+    watchLinks(view.contentDocument);
+    const t = view.contentDocument.title;
+    document.title = (t ? t + ' - ' : '') + 'interJEV Explorer';
+  } catch (e) {}
+  if (loading) renderStatus();
+}
+
+view.addEventListener('load', () => {
+  hovered = '';
+  setLoading(false);
+  sync();
+  try {
+    view.contentWindow.addEventListener('beforeunload', () => setLoading(true));
+  } catch (e) {}
+});
+setInterval(sync, 400); // keep the bar right while a page is still streaming in
+
+document.getElementById('nav').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = address.value.trim();
+  if (!v) return;
+  address.blur();
+  setLoading(true, v);
+  view.src = '/go?u=' + encodeURIComponent(v);
+});
+document.getElementById('back').onclick = () => view.contentWindow.history.back();
+document.getElementById('fwd').onclick = () => view.contentWindow.history.forward();
+document.getElementById('reload').onclick = () => { setLoading(true, address.value); view.contentWindow.location.reload(); };
+document.getElementById('home').onclick = () => { view.src = '/home'; };
+regen.onclick = () => {
+  const loc = currentLocation();
+  if (!loc || !loc.pathname.startsWith('/site/')) return;
+  const sep = loc.search ? '&' : '?';
+  setLoading(true, address.value);
+  view.contentWindow.location.href = loc.pathname + loc.search + sep + '_regen=1';
+};
+address.addEventListener('focus', () => address.select());
+
+// Startup notice: shown every time the browser opens. Nothing loads until the
+// visitor chooses, so an opted-out session is never logged.
+(() => {
+  const notice = document.getElementById('notice');
+  const err = document.getElementById('notice-err');
+  const rec = document.getElementById('rec');
+  const yes = document.getElementById('notice-yes');
+  const no = document.getElementById('notice-no');
+  let started = false;
+
+  async function choose(record) {
+    yes.disabled = no.disabled = true;
+    err.textContent = '';
+    try {
+      const res = await fetch('/api/recording', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record }),
+      });
+      if (!res.ok) throw new Error(res.statusText);
+    } catch (e) {
+      err.textContent = "Couldn't save your choice. Please try again.";
+      return;
+    } finally {
+      yes.disabled = no.disabled = false;
+    }
+    notice.hidden = true;
+    rec.hidden = !record;
+    if (!started) {
+      started = true;
+      view.src = view.dataset.start;
+      document.dispatchEvent(new Event('jev:noticed'));
+    }
+    address.focus();
+  }
+
+  yes.onclick = () => choose(true);
+  no.onclick = () => choose(false);
+  rec.onclick = () => { notice.hidden = false; no.focus(); }; // change your mind mid-session
+  yes.focus();
+})();
+
+// The question every browser of a certain era asked on launch.
+(() => {
+  const promptBar = document.getElementById('default-prompt');
+  const KEY = 'interjev-default-browser-asked';
+  let asked = false;
+  try { asked = localStorage.getItem(KEY) === '1'; } catch (e) {}
+  if (asked) return;
+  // Wait until the recording notice has been answered.
+  document.addEventListener('jev:noticed', () => { promptBar.hidden = false; }, { once: true });
+  const remember = () => { try { localStorage.setItem(KEY, '1'); } catch (e) {} };
+  document.getElementById('default-no').onclick = () => { promptBar.hidden = true; remember(); };
+  document.getElementById('default-yes').onclick = () => {
+    remember();
+    promptBar.querySelector('span').textContent =
+      'interJEV Explorer is now your default browser. (It is not. But we appreciate the gesture.)';
+    promptBar.querySelectorAll('button').forEach((b) => b.remove());
+    setTimeout(() => { promptBar.hidden = true; }, 4000);
+  };
+})();
+</script>
+</body>
+</html>
