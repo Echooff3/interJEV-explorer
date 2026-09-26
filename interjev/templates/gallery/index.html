@@ -1,0 +1,103 @@
+{% extends "gallery/base.html" %}
+
+{% block header %}
+<div class="stats">
+  <span class="stat"><b>{{ "{:,}".format(stats.searches) }}</b> searches</span>
+  <span class="stat"><b>{{ "{:,}".format(stats.pages) }}</b> pages</span>
+  <span class="stat"><b>{{ "{:,}".format(stats.pages_24h) }}</b> pages in 24h</span>
+  <span class="stat"><b>{{ "{:,}".format(stats.visitors) }}</b> visitors</span>
+</div>
+{% endblock %}
+
+{% block body %}
+<div class="layout">
+  <aside>
+    <section>
+      <h2>Top searches</h2>
+      <ol>
+        {% for s in top %}
+        <li><a href="{{ qs(search=s.query) }}" title="Pages opened from this search">{{ s.query }}</a><small>{{ s.n }}×</small></li>
+        {% else %}
+        <li><small>No searches yet.</small></li>
+        {% endfor %}
+      </ol>
+    </section>
+    <section>
+      <h2>Recent searches</h2>
+      <ul>
+        {% for s in recent %}
+        <li>
+          <a href="{{ qs(search=s.query) }}">{{ s.query }}</a>
+          {% if s.error %}<span class="badge err" title="{{ s.error }}">error</span>{% endif %}
+          <small title="{{ s.created_at | when }}">{{ s.created_at.strftime("%H:%M") }}</small>
+        </li>
+        {% else %}
+        <li><small>No searches yet.</small></li>
+        {% endfor %}
+      </ul>
+    </section>
+  </aside>
+
+  <main>
+    <form class="filters" method="get">
+      <input name="q" value="{{ filters.q }}" placeholder="Filter pages by URL or title">
+      <input name="host" value="{{ filters.host }}" placeholder="Site, e.g. snailweekly.net">
+      {% if filters.visitor %}<input type="hidden" name="visitor" value="{{ filters.visitor }}">{% endif %}
+      {% if filters.search %}<input type="hidden" name="search" value="{{ filters.search }}">{% endif %}
+      <button>Filter</button>
+    </form>
+
+    {% if active %}
+    <div class="chips">
+      {% for key, value in active.items() %}
+      <span class="chip">{{ {"q": "matching", "host": "site", "visitor": "visitor", "search": "from search"}[key] }}:
+        <b>{{ value[:12] if key == "visitor" else value }}</b>
+        <a href="{{ qs(**{key: None}) }}" title="Remove filter">&times;</a>
+      </span>
+      {% endfor %}
+      <a class="chip" href="{{ url_for('gallery.index') }}">Clear all</a>
+    </div>
+    {% endif %}
+
+    {% if pages %}
+    <div class="grid">
+      {% for p in pages %}
+      <article class="card">
+        <a class="thumb" href="{{ url_for('gallery.detail', page_id=p.id) }}" aria-label="{{ p.title or p.url }}">
+          <iframe src="{{ url_for('gallery.raw', page_id=p.id) }}" loading="lazy" sandbox tabindex="-1" title=""></iframe>
+        </a>
+        <div class="info">
+          <a class="title" href="{{ url_for('gallery.detail', page_id=p.id) }}">{{ p.title or "(untitled)" }}</a>
+          <span class="url" title="{{ p.url }}">{{ p.url }}</span>
+          <span class="meta">
+            <span>{{ p.created_at | when }}</span>
+            {% if p.duration_ms %}<span>· {{ "%.1f" | format(p.duration_ms / 1000) }}s</span>{% endif %}
+            {% if p.method == "POST" %}<span class="badge">POST</span>{% endif %}
+            {% if p.error %}<span class="badge err" title="{{ p.error }}">error</span>{% endif %}
+          </span>
+          <span class="meta">
+            {% set q = p.referrer | search_query %}
+            {% if q %}<span>from <a href="{{ qs(search=q) }}">“{{ q }}”</a></span>{% endif %}
+            <a href="{{ qs(host=p.host) }}">site</a>
+            {% if p.visitor_id %}<a href="{{ qs(visitor=p.visitor_id) }}" title="Everything this visitor made">visitor {{ p.visitor_id[:6] }}</a>{% endif %}
+          </span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    <nav class="pager">
+      <span>{% if page > 1 %}<a class="btn" href="{{ qs(page=page - 1 if page > 2 else None) }}">&larr; Newer</a>{% endif %}</span>
+      <span>{% if has_next %}<a class="btn" href="{{ qs(page=page + 1) }}">Older &rarr;</a>{% endif %}</span>
+    </nav>
+    {% else %}
+    <div class="empty">No pages {% if active %}match these filters{% else %}yet. Go make JEV build something!{% endif %}</div>
+    {% endif %}
+  </main>
+</div>
+
+<script>
+  // Scale each 1280px-wide thumbnail to fit its card.
+  const fit = () => document.querySelectorAll('.thumb').forEach((t) => t.style.setProperty('--scale', t.clientWidth / 1280));
+  addEventListener('resize', fit); fit();
+</script>
+{% endblock %}

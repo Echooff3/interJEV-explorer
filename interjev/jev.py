@@ -1,5 +1,6 @@
 """Client for talking to JEV through OpenRouter's OpenAI-compatible API."""
 
+import html
 import json
 import os
 import time
@@ -118,10 +119,13 @@ class MockJEV:
         return json.dumps({"results": results})
 
     def stream(self, messages: list[dict]) -> Iterator[str]:
+        url = messages[-1]["content"].split("\n", 1)[0].removeprefix("URL: ")
+        hue = sum(map(ord, url)) % 360
         page = (
             "```html\n<!DOCTYPE html><html><head><title>Mock page</title>"
-            "<style>body{font-family:sans-serif;max-width:720px;margin:40px auto;padding:0 16px}</style>"
-            "</head><body><h1>Mock page</h1><p>JEV is running in mock mode.</p>"
+            "<style>body{font-family:sans-serif;max-width:720px;margin:40px auto;padding:0 16px;"
+            f"background:hsl({hue},60%,92%)}}h1{{color:hsl({hue},60%,35%)}}</style>"
+            f"</head><body><h1>Mock page</h1><p>{html.escape(url)}</p><p>JEV is running in mock mode.</p>"
             '<p><a href="/about">About</a> · <a href="https://www.another-mock.org/news">Another site</a></p>'
             '<form action="/search"><input name="q"><button>Go</button></form>'
             '<img src="/logo.png" alt="Company logo"></body></html>\n```'

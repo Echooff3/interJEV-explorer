@@ -1,0 +1,37 @@
+{% extends "gallery/base.html" %}
+{% block title %}{{ p.title or p.url }}{% endblock %}
+
+{% block body %}
+<main class="detail">
+  <p><a href="{{ url_for('gallery.index') }}">&larr; All pages</a></p>
+  <h2>{{ p.title or "(untitled)" }}</h2>
+  <div class="mono">{{ p.url }}</div>
+
+  <div class="actions">
+    <a class="btn" href="{{ url_for('gallery.source', page_id=p.id) }}" target="_blank">View source</a>
+    <a class="btn" href="{{ url_for('gallery.source', page_id=p.id, download=1) }}">Download HTML</a>
+    <a class="btn" href="{{ url_for('gallery.raw', page_id=p.id) }}" target="_blank">Open full size</a>
+    <a class="btn" href="{{ url_for('gallery.index', host=p.host) }}">More from {{ p.host }}</a>
+    {% if p.visitor_id %}<a class="btn" href="{{ url_for('gallery.index', visitor=p.visitor_id) }}">This visitor's pages</a>{% endif %}
+  </div>
+
+  <dl>
+    <dt>Created</dt><dd>{{ p.created_at | when }}{% if p.duration_ms %} in {{ "%.1f" | format(p.duration_ms / 1000) }}s{% endif %}</dd>
+    <dt>Model</dt><dd class="mono">{{ p.model or "—" }}</dd>
+    <dt>Request</dt><dd>{{ p.method }}</dd>
+    {% if p.form %}<dt>Form data</dt><dd class="mono">{% for k, v in p.form.items() %}{{ k }} = {{ v }}{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}
+    {% set q = p.referrer | search_query %}
+    <dt>Came from</dt><dd>
+      {% if q %}search <a href="{{ url_for('gallery.index', search=q) }}">“{{ q }}”</a>
+      {% elif p.referrer %}<span class="mono">{{ p.referrer }}</span>
+      {% else %}—{% endif %}
+    </dd>
+    <dt>Visitor</dt><dd class="mono">{{ p.visitor_id or "—" }}</dd>
+    <dt>Size</dt><dd>{{ "{:,}".format((p.html or "") | length) }} characters</dd>
+    {% if p.error %}<dt>Error</dt><dd><span class="badge err">{{ p.error }}</span></dd>{% endif %}
+  </dl>
+
+  <iframe class="preview" src="{{ url_for('gallery.raw', page_id=p.id) }}"
+          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title="Page preview"></iframe>
+</main>
+{% endblock %}

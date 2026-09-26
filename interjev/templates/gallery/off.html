@@ -1,0 +1,10 @@
+{% extends "gallery/base.html" %}
+{% block body %}
+<main class="detail">
+  <div class="empty">
+    <p><strong>The gallery reads from Postgres, and there's no database connected.</strong></p>
+    <p>Start the app with <code>--capture</code> (or <code>JEV_CAPTURE=1</code>) and set <code>DATABASE_URL</code>.
+       Without it, searches and pages are only printed to the console.</p>
+  </div>
+</main>
+{% endblock %}

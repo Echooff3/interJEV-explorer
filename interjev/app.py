@@ -10,7 +10,7 @@ from urllib.parse import urlencode, urlsplit
 from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 from markupsafe import escape
 
-from . import prompts
+from . import gallery, prompts
 from .jev import JEVError, get_client
 from .rewrite import (
     StreamRewriter,
@@ -38,6 +38,7 @@ RECORD_COOKIE = "jev_record"  # "off" when the visitor opted out on the startup 
 
 def create_app(client_factory=get_client, recorder=None) -> Flask:
     app = Flask(__name__)
+    app.register_blueprint(gallery.bp)
     store = Store()
     recorder = recorder or make_recorder()
 

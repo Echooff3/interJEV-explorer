@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{% block title %}Gallery{% endblock %} - interJEV Explorer</title>
+<link rel="icon" href="{{ url_for('static', filename='logo.svg') }}" type="image/svg+xml">
+<link rel="stylesheet" href="{{ url_for('static', filename='gallery.css') }}">
+</head>
+<body>
+  <header>
+    <img src="{{ url_for('static', filename='logo.svg') }}" alt="">
+    <h1><a href="{{ url_for('gallery.index') }}">interJEV Gallery</a></h1>
+    {% block header %}{% endblock %}
+  </header>
+  {% block body %}{% endblock %}
+</body>
+</html>

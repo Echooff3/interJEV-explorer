@@ -110,7 +110,27 @@ session:
 - A generated link opened directly in a new tab is sent back through the
   browser frame, so the notice can't be skipped that way.
 
-Some queries to start with:
+### The gallery
+
+Set `GALLERY_PASSWORD` and open `/gallery` to browse what's been recorded. It
+only works with `--capture`, since it reads from Postgres. Your browser will
+ask you to log in: any username works, and the password is `GALLERY_PASSWORD`.
+If the variable isn't set, the gallery is turned off.
+
+- **Main page:** totals (searches, pages, visitors), top and recent searches,
+  and a grid of live previews of every page JEV has built. You can filter by
+  text, by site, by the search that led there, or by visitor, which shows one
+  person's whole session.
+- **Page view:** the page's details (model, time taken, any form data, the
+  search it came from, errors), a full-size preview, and buttons to view or
+  download the HTML.
+
+Stored pages are written by the model, so previews run in a locked-down
+sandbox: their scripts can't reach the gallery or anything else on the site.
+Clicking a link in a preview opens a new tab in interJEV Explorer, which starts
+with the recording notice like any other visit.
+
+To dig into the data directly, some queries to start with:
 
 ```sql
 -- What are people searching for?
@@ -132,6 +152,7 @@ SELECT html FROM pages WHERE id = 42;
    - Add a **Postgres** service to the project.
    - On the app service, add the variable `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`.
    - Add `JEV_CAPTURE=1`, or change the start command to `python -m interjev --capture`.
+4. Optionally set `GALLERY_PASSWORD` to turn on `/gallery`.
 
 Without step 3, everything is still recorded to the deploy logs.
 
