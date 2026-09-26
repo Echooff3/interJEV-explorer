@@ -83,6 +83,76 @@ serves canned responses.
 Prompts live in `interjev/prompts.py`, so that's where to go to change JEV's
 personality.
 
+## The blueprint
+
+With `JEV_BLUEPRINT=1`, the page a site serves isn't left entirely to the
+writer model. Before a word of HTML is written, the URL and what's known about
+the site go to JEV's [Decisions API](https://openrouter.ai/api/alpha/decisions),
+which answers a fixed set of typed questions. Those answers are injected into
+the writer's prompt as art direction it must follow.
+
+Each question type does a different job:
+
+| Type | Used for | Example |
+| --- | --- | --- |
+| `choice` | Things that can only be one way at a time | `archetype` → news, shop, forum, … |
+| `score` | Ordered dials, read as a fraction | `era` → `1.94 / 2`, mostly 2026 modern |
+| `noul` | Independent optional elements | `comments` → `0.47` |
+
+The `noul` answers are **sampled, not thresholded**. A 0.47 on comments means
+comments appear on roughly 47% of pages like that one, so the furniture varies
+between pages the way a real slice of the web does, and the variation is tied
+to the content rather than to `random.random()`. Each generation draws a new
+seed, which is what makes ✨ regenerate produce the same site with different
+bones.
+
+Layout, colour, archetype and era are decided once per site and then inherited,
+so later pages on a site look related to the first one. Advertising density,
+text density and every element roll are decided per page.
+
+Open the **⌸ JEV blueprint** panel in the status bar to watch it happen: every
+question, the probability JEV assigned to each option, its confidence, and
+which elements the roll let in. A blueprint costs about $0.00005 and adds
+roughly 400ms before the page starts streaming. If the call fails the page is
+generated the normal way.
+
+Set `JEV_DECISIONS_MODEL` to change the decisions model (default
+`~typesafe/jev-latest`). Note this is a *different* model from `JEV_MODEL`:
+decisions models are served on their own endpoint and can't be used for
+chat completions, or vice versa.
+
+## Building pages from snippets
+
+With `JEV_SNIPPETS=1` (which needs `JEV_BLUEPRINT=1`), no model writes HTML at
+all. Every tag and every CSS rule comes from `interjev/components.py`, and the
+model is only allowed to supply words.
+
+1. JEV picks the page's structure *and* which markup variant each component
+   uses — `variant_masthead`, `variant_article`, and so on, asked in the same
+   single decisions call as everything else.
+2. `interjev/assemble.py` builds the whole document from those answers in
+   microseconds: layout, components, and a stylesheet derived from the
+   `palette` choice and the `era` and `text_density` scores.
+3. The skeleton ships immediately, with a shimmer placeholder in every text
+   slot. **First byte lands in about 0.35s**, fully laid out.
+4. `interjev/copy.py` asks a small, cheap model for a flat JSON object of plain
+   strings — one per slot, no HTML. Pairs are parsed out of the stream as they
+   complete, so each slot fills the moment its words arrive.
+
+The first key the model returns is `_brief`, a one-sentence statement of what
+the page is about. It is not rendered; it is stored as a site note so later
+pages on the same site stay consistent with it.
+
+Because the copy model never produces markup, it can be small: the default is
+`deepseek/deepseek-v4-flash` at about $0.0001 a page. Set `JEV_COPY_MODEL` to
+change it. Avoid reasoning models — they leak their thinking into the JSON.
+
+What this buys you is that a page's structure no longer depends on which model
+served the request, and a bad response degrades into a few unfilled slots
+rather than a broken document. What it costs is variety: pages are as different
+as the library is large, so adding variants to `COMPONENTS` is how the
+alternate internet gets more interesting.
+
 ## Recording searches and pages
 
 Every search and every page JEV creates is recorded, unless the visitor opts

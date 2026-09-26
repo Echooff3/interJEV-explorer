@@ -60,6 +60,7 @@ def page_messages(
     known_pages: list[tuple[str, str]] | None = None,
     stylesheet: str | None = None,
     referrer: tuple[str, str] | None = None,
+    blueprint: str | None = None,
 ) -> list[dict]:
     parts = [f"URL: {url}", f"HTTP method: {method}"]
     if form:
@@ -78,6 +79,12 @@ def page_messages(
             "Visual consistency: this site's earlier pages used the stylesheet below. "
             "Reuse it (you may extend it) so the site looks the same across pages, "
             "and keep the same header/navigation.\n<style>\n" + stylesheet + "\n</style>"
+        )
+    if blueprint:
+        parts.append(
+            "ART DIRECTION — these decisions are already made. Follow every one of them "
+            "exactly; do not substitute your own judgement, and do not mention them on "
+            "the page:\n" + blueprint
         )
     return [
         {"role": "system", "content": PAGE_SYSTEM},

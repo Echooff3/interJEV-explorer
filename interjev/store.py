@@ -14,6 +14,7 @@ class Site:
     notes: list[str] = field(default_factory=list)
     pages: "OrderedDict[str, str]" = field(default_factory=OrderedDict)  # path -> title
     stylesheet: str = ""
+    identity: dict = field(default_factory=dict)  # JEV's identity answers, set by the first page
 
 
 class Store:
@@ -52,6 +53,13 @@ class Store:
             if note not in site.notes:
                 site.notes.append(note)
                 del site.notes[:-5]
+
+    def set_identity(self, host: str, identity: dict) -> None:
+        """First page on a site wins: later pages inherit its look."""
+        site = self.site(host)
+        with self._lock:
+            if not site.identity:
+                site.identity = identity
 
     def record_visit(self, host: str, path: str, title: str, stylesheet: str) -> None:
         site = self.site(host)

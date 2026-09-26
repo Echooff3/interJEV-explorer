@@ -5,11 +5,15 @@ import re
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from urllib.parse import urlencode, urlsplit
 
 from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 from markupsafe import escape
 
+from . import assemble
+from . import blueprint as bp
+from . import copy as copywriter
 from . import gallery, prompts
 from .jev import JEVError, get_client
 from .rewrite import (
@@ -31,6 +35,20 @@ SITE_CSP = (
     "connect-src 'none'; form-action 'self'; frame-ancestors 'self'"
 )
 
+
+# Hydration for the snippet pipeline: the skeleton ships first, then each slot
+# is filled as its copy finishes streaming.
+HYDRATE_JS = """<script>
+function __j(k,v){var n=document.querySelectorAll('[data-slot="'+k+'"]');
+for(var i=0;i<n.length;i++){n[i].textContent=v;n[i].classList.add('done','settled');}
+if(k==='headline'||k==='site_name')__t();}
+function __t(){var h=document.querySelector('[data-slot="headline"]'),
+s=document.querySelector('[data-slot="site_name"]'),
+a=h?h.textContent:'',b=s?s.textContent:'';
+document.title=a?(b?a+' \u2014 '+b:a):b;}
+function __jdone(){var n=document.querySelectorAll('[data-slot]');
+for(var i=0;i<n.length;i++)n[i].classList.add('done');}
+</script>"""
 
 VISITOR_COOKIE = "jev_vid"
 RECORD_COOKIE = "jev_record"  # "off" when the visitor opted out on the startup notice
@@ -56,6 +74,15 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
         return None
     search_cache: dict[str, list[dict]] = {}
     search_lock = threading.Lock()
+    blueprint_cache: "OrderedDict[str, dict]" = OrderedDict()  # local path -> inspector payload
+    blueprint_lock = threading.Lock()
+
+    def remember_blueprint(local: str, payload: dict) -> None:
+        with blueprint_lock:
+            blueprint_cache[local] = payload
+            blueprint_cache.move_to_end(local)
+            while len(blueprint_cache) > 200:
+                blueprint_cache.popitem(last=False)
 
     # ---- chrome, home, results -------------------------------------------
 
@@ -64,7 +91,7 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
         start = request.args.get("start", "/home")
         if not start.startswith("/") or start.startswith("//"):
             start = "/home"
-        resp = app.make_response(render_template("shell.html", start=start))
+        resp = app.make_response(render_template("shell.html", start=start, blueprint=bp.enabled()))
         if not request.cookies.get(VISITOR_COOKIE):
             # Anonymous id so analytics can tell one visitor's searches from another's.
             resp.set_cookie(VISITOR_COOKIE, uuid.uuid4().hex, max_age=365 * 86400, samesite="Lax", httponly=True)
@@ -193,16 +220,6 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
 
         site_info = store.site(host)
         referrer = referrer_info()
-        messages = prompts.page_messages(
-            url,
-            method=request.method,
-            form=form,
-            site_notes="\n".join(site_info.notes) or None,
-            known_pages=[(p, t) for p, t in site_info.pages.items() if p != "/" + path] or None,
-            stylesheet=site_info.stylesheet or None,
-            referrer=referrer,
-        )
-
         request_method = request.method
         recording = recording_allowed()  # decided now: the generator runs after the request
         event = {
@@ -214,6 +231,40 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
             "referrer": referrer[0] if referrer else search_referrer(),
             "model": getattr(client, "model", None),
         }
+
+        page_blueprint = None
+        if bp.enabled():
+            try:
+                page_blueprint = bp.get_decider().decide(
+                    state=blueprint_state(url, request.method, site_info, referrer, form),
+                    seed=uuid.uuid4().hex,
+                    extra=assemble.variant_questions() if copywriter.enabled() else None,
+                )
+                if site_info.identity:
+                    page_blueprint.adopt_identity(site_info.identity)
+                else:
+                    store.set_identity(host, page_blueprint.identity())
+                remember_blueprint(clean_local, page_blueprint.inspector())
+            except Exception as exc:
+                # A blueprint is an enhancement; never let it stop the page.
+                app.logger.warning("blueprint failed for %s: %s", url, exc)
+                page_blueprint = None
+
+        if copywriter.enabled() and page_blueprint is not None:
+            return snippet_page(url, host, path, page_blueprint, site_info,
+                                referrer, form, headers, event, recording)
+
+        messages = prompts.page_messages(
+            url,
+            method=request.method,
+            form=form,
+            site_notes="\n".join(site_info.notes) or None,
+            known_pages=[(p, t) for p, t in site_info.pages.items() if p != "/" + path] or None,
+            stylesheet=site_info.stylesheet or None,
+            referrer=referrer,
+            blueprint=page_blueprint.prompt_text() if page_blueprint else None,
+        )
+
 
         def generate():
             rw = StreamRewriter(url)
@@ -247,6 +298,83 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
             store.record_visit(host, "/" + path, extract_title(page), extract_stylesheet(page))
 
         return Response(generate(), mimetype="text/html", headers=headers)
+
+    def snippet_page(url, host, path, page_blueprint, site_info, referrer, form,
+                     headers, event, recording):
+        """Skeleton and CSS from the library, words streamed into it afterwards."""
+        built = assemble.assemble(page_blueprint)
+        remember_blueprint(to_local(url), {**page_blueprint.inspector(),
+                                           "components": built.components,
+                                           "slots": len(built.slots)})
+        messages = copywriter.build_prompt(
+            url, built.slots,
+            site_notes="\n".join(site_info.notes) or None,
+            directives=page_blueprint.prompt_text(),
+            referrer=referrer,
+            form=form,
+        )
+        writer = copywriter.get_writer()
+        event = {**event, "model": getattr(writer, "model", None)}
+        request_method = request.method
+
+        def generate():
+            started = time.monotonic()
+            rw = StreamRewriter(url)
+            skeleton = rw.feed(built.html) + rw.finish()
+            yield skeleton
+            yield HYDRATE_JS
+            values = {}
+            try:
+                for key, value in writer.stream(messages):
+                    if key == "_brief":
+                        store.add_note(host, value)
+                        continue
+                    values[key] = value
+                    yield ("<script>__j(" + json.dumps(key) + "," + json.dumps(value) + ")</script>")
+            except Exception as exc:
+                yield ("<script>__jdone()</script>"
+                       '<div class="note"><b>interJEV Explorer could not finish this page.</b> '
+                       + str(escape(str(exc))) + "</div>")
+                if recording:
+                    recorder.record("pages", **event, html=assemble.fill(built.html, values),
+                                    duration_ms=elapsed_ms(started), error=str(exc))
+                yield "</body></html>"
+                return
+            yield "<script>__jdone()</script></body></html>"
+
+            title = values.get("headline") or values.get("site_name") or ""
+            page = assemble.fill(built.html, values, title) + "</body></html>"
+            if recording:
+                recorder.record("pages", **event, title=title, html=page,
+                                duration_ms=elapsed_ms(started),
+                                error=None if values else "no copy returned")
+            if request_method == "GET":
+                store.put_page(url, page)
+            store.record_visit(host, "/" + path, title, built.stylesheet)
+
+        return Response(generate(), mimetype="text/html", headers=headers)
+
+    def blueprint_state(url, method, site_info, referrer, form) -> str:
+        """What JEV sees when it decides the page's structure."""
+        parts = [f"URL: {url}", f"HTTP method: {method}"]
+        if site_info.notes:
+            parts.append("What is known about this site:\n" + "\n".join(site_info.notes))
+        if referrer:
+            parts.append(f'Arrived from: {referrer[0]} ("{referrer[1]}")')
+        if form:
+            parts.append("Submitted form fields: " + ", ".join(form))
+        if site_info.pages:
+            parts.append("Other pages seen on this site: " + ", ".join(site_info.pages))
+        return "\n\n".join(parts)
+
+    @app.get("/api/blueprint")
+    def api_blueprint():
+        local = request.args.get("u", "")
+        with blueprint_lock:
+            payload = blueprint_cache.get(local)
+        if payload is None:
+            return jsonify({"blueprint": None}), 404
+        return jsonify({"blueprint": payload})
 
     def referrer_info():
         ref = request.referrer or ""

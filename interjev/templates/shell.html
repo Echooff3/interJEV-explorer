@@ -56,6 +56,42 @@
   .statusbar .msg { flex: 1; min-width: 0; overflow: hidden; }
   .statusbar .msg span { overflow: hidden; text-overflow: ellipsis; }
   .statusbar .zone, .statusbar .zoom { border-left: 1px solid var(--chrome-edge); }
+  .statusbar .bp { border-left: 1px solid var(--chrome-edge); cursor: pointer; color: var(--muted); }
+  .statusbar .bp:hover { background: var(--btn-hover); }
+  .statusbar .bp.on { color: var(--accent); font-weight: 600; }
+
+  /* JEV blueprint inspector */
+  .inspector { border-top: 1px solid var(--chrome-edge); background: var(--chrome);
+               max-height: 46vh; overflow: auto; font-size: 12px; padding: 10px 12px 14px; }
+  .inspector[hidden] { display: none; }
+  .inspector .head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline;
+                     padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--chrome-edge); }
+  .inspector .head b { font-size: 13px; }
+  .inspector .head code { color: var(--muted); font-size: 11px; }
+  .inspector .empty { color: var(--muted); }
+  .inspector .grp { color: var(--muted); text-transform: uppercase; letter-spacing: .06em;
+                    font-size: 10px; margin: 12px 0 6px; }
+  .inspector .grp:first-of-type { margin-top: 0; }
+  .q { margin-bottom: 9px; }
+  .q .ask { display: flex; gap: 8px; align-items: baseline; margin-bottom: 3px; }
+  .q .ask span { flex: 1; }
+  .q .key { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--muted); }
+  .q .conf { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .q .pill { font-size: 10px; border: 1px solid var(--chrome-edge); border-radius: 999px;
+             padding: 0 6px; color: var(--muted); white-space: nowrap; }
+  .opt { display: grid; grid-template-columns: 1fr 44px; gap: 8px; align-items: center;
+         padding: 1px 0; color: var(--muted); }
+  .opt.pick { color: var(--text); font-weight: 600; }
+  .opt .track { position: relative; height: 9px; border-radius: 2px; background: var(--field);
+                border: 1px solid var(--chrome-edge); overflow: hidden; }
+  .opt .fill { position: absolute; inset: 0 auto 0 0; background: var(--chrome-edge); }
+  .opt.pick .fill { background: var(--accent); }
+  .opt .lbl { display: block; margin-bottom: 1px; }
+  .opt .num { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; }
+  .roll { display: grid; grid-template-columns: 1fr 44px 58px; gap: 8px; align-items: center; }
+  .roll .in { color: var(--accent); font-weight: 600; }
+  .roll .out { color: var(--muted); text-decoration: line-through; }
+  .roll .verdict { font-size: 11px; text-align: right; white-space: nowrap; }
   @media (max-width: 600px) { .brand span, form label, .statusbar .zoom { display: none; } }
 
   /* Startup notice, dressed as a classic "Security Alert" dialog */
@@ -144,8 +180,15 @@
     </div>
   </div>
 
+{% if blueprint %}
+  <div class="inspector" id="inspector" hidden></div>
+{% endif %}
+
   <div class="statusbar">
     <div class="msg"><span id="status">Done</span></div>
+{% if blueprint %}
+    <div class="bp" id="bp-toggle" title="Show the decisions JEV made about this page">&#9707; JEV blueprint</div>
+{% endif %}
     <div class="zone" title="Pages on interJEV can't load anything from the real internet">&#127760; interJEV | Protected Mode: On</div>
     <div class="zoom">&#128269; 100%</div>
   </div>
@@ -304,6 +347,138 @@ address.addEventListener('focus', () => address.select());
   rec.onclick = () => { notice.hidden = false; no.focus(); }; // change your mind mid-session
   yes.focus();
 })();
+
+{% if blueprint %}
+// JEV blueprint inspector: the typed decisions that shaped the page you're looking at.
+(() => {
+  const drawer = document.getElementById('inspector');
+  const toggle = document.getElementById('bp-toggle');
+  const KEY = 'interjev-inspector-open';
+  let open = false;
+  let shown = '';   // path whose blueprint is on screen
+  try { open = localStorage.getItem(KEY) === '1'; } catch (e) {}
+
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  const pct = (p) => Math.round((p || 0) * 100) + '%';
+
+  function option(label, fraction, picked) {
+    const row = el('div', picked ? 'opt pick' : 'opt');
+    const track = el('div', 'track');
+    const fill = el('div', 'fill');
+    fill.style.width = Math.max(0, Math.min(1, fraction || 0)) * 100 + '%';
+    track.appendChild(fill);
+    const left = el('div');
+    left.appendChild(el('span', 'lbl', label));
+    left.appendChild(track);
+    row.appendChild(left);
+    row.appendChild(el('div', 'num', pct(fraction)));
+    return row;
+  }
+
+  function question(q) {
+    const box = el('div', 'q');
+    const ask = el('div', 'ask');
+    ask.appendChild(el('span', null, q.question));
+    if (q.inherited) ask.appendChild(el('span', 'pill', 'site identity'));
+    ask.appendChild(el('span', 'key', q.key));
+    if (q.confidence !== undefined && q.confidence !== null) {
+      ask.appendChild(el('span', 'conf', 'conf ' + Number(q.confidence).toFixed(2)));
+    }
+    box.appendChild(ask);
+
+    if (q.type === 'choice') {
+      const keys = Object.keys(q.labels || {});
+      keys.sort((a, b) => (q.probabilities[b] || 0) - (q.probabilities[a] || 0));
+      keys.forEach((k) => box.appendChild(
+        option(q.labels[k] || k, q.probabilities[k] || 0, k === q.chosen)));
+    } else if (q.type === 'score') {
+      const levels = Object.keys(q.legend || {}).sort();
+      levels.forEach((i) => box.appendChild(
+        option(q.legend[i], q.probabilities[i] || 0, Math.round(q.score) === Number(i))));
+      const read = el('div', 'ask');
+      read.appendChild(el('span', 'conf', '= ' + Number(q.score).toFixed(2) + ' / ' + q.max + '  →  ' + q.phrase));
+      box.appendChild(read);
+    } else {
+      const row = el('div', 'roll');
+      const track = el('div', 'track');
+      const fill = el('div', 'fill');
+      fill.style.width = Math.max(0, Math.min(1, q.probability)) * 100 + '%';
+      track.appendChild(fill);
+      const holder = el('div', q.included ? 'opt pick' : 'opt');
+      holder.appendChild(track);
+      row.appendChild(holder);
+      row.appendChild(el('div', 'num', pct(q.probability)));
+      row.appendChild(el('div', 'verdict ' + (q.included ? 'in' : 'out'),
+                          q.included ? 'rolled in' : 'rolled out'));
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  function render(bp) {
+    drawer.textContent = '';
+    if (!bp) {
+      drawer.appendChild(el('div', 'empty',
+        'No blueprint for this page yet — open a generated site and JEV will decide its structure first.'));
+      return;
+    }
+    const head = el('div', 'head');
+    head.appendChild(el('b', null, 'JEV decided this page'));
+    head.appendChild(el('code', null, bp.model));
+    head.appendChild(el('code', null, bp.duration_ms + ' ms'));
+    if (bp.cost != null) head.appendChild(el('code', null, '$' + Number(bp.cost).toFixed(6)));
+    if (bp.input_tokens != null) head.appendChild(el('code', null, bp.input_tokens + ' tokens in'));
+    head.appendChild(el('code', null, 'seed ' + String(bp.seed).slice(0, 8)));
+    drawer.appendChild(head);
+
+    const groups = [
+      ['choice', 'Structure — choice: one of a set'],
+      ['score', 'Dials — score: a position on an ordered scale'],
+      ['noul', 'Elements — noul: a probability, sampled against the seed'],
+    ];
+    groups.forEach(([type, title]) => {
+      const rows = (bp.rows || []).filter((r) => r.type === type);
+      if (!rows.length) return;
+      drawer.appendChild(el('div', 'grp', title));
+      rows.forEach((r) => drawer.appendChild(question(r)));
+    });
+  }
+
+  async function refresh(force) {
+    if (!open) return;
+    const loc = currentLocation();
+    const path = loc && loc.pathname.startsWith('/site/') ? loc.pathname + loc.search : '';
+    if (!force && path === shown) return;
+    shown = path;
+    if (!path) { render(null); return; }
+    try {
+      const res = await fetch('/api/blueprint?u=' + encodeURIComponent(path));
+      render(res.ok ? (await res.json()).blueprint : null);
+    } catch (e) {
+      render(null);
+    }
+  }
+
+  function setOpen(v) {
+    open = v;
+    drawer.hidden = !v;
+    toggle.classList.toggle('on', v);
+    try { localStorage.setItem(KEY, v ? '1' : '0'); } catch (e) {}
+    if (v) { shown = ''; refresh(true); }
+  }
+
+  toggle.onclick = () => setOpen(!open);
+  // A page is only blueprinted once it has been generated, so re-check as pages settle.
+  view.addEventListener('load', () => setTimeout(() => refresh(true), 50));
+  setInterval(() => refresh(false), 600);
+  if (open) setOpen(true);
+})();
+{% endif %}
 
 // The question every browser of a certain era asked on launch.
 (() => {
