@@ -16,6 +16,15 @@ news, personal pages). Deep links (paths) are good.
 - Snippets are 1-2 sentences, written like real search snippets, and may include dates.
 - Make the results feel like a real slice of the web: some earnest, some commercial, \
 some niche, maybe one odd one.
+- Exactly one result must be an amateur personal homepage about the search topic \
+that has not been touched since the late 1990s, on an invented free web host. \
+Give it a tilde or members path ending in a .html or .htm file, like \
+https://members.<invented-host>.net/~<firstname><initial>/<topic>/index.html. \
+Its title is shouty and hand-made — caps, extra punctuation, ~*~ decoration — and \
+names only the search topic. Its snippet sounds hand-written and mentions a \
+guestbook, webring, hit counter or "last updated 1998". Everything about it must \
+stay on the search topic; never carry over wording from these instructions. \
+Put it in the middle of the results, never first.
 """
 
 PAGE_SYSTEM = """\

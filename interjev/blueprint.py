@@ -49,9 +49,66 @@ CHOICE_QUESTIONS = {
             "warm_paper": "Off-white or cream paper tones, serif type",
             "dark_mode": "Dark background with light text",
             "brand_saturated": "A strong saturated brand colour used confidently",
+            "newsprint": "Grey-on-white newsprint, rules and columns, almost no colour",
+            "pastel_soft": "Soft pastels, rounded shapes, gentle low contrast",
+            "neon_terminal": "Near-black with neon green or cyan, terminal styling",
             "garish": "Clashing bright colours, tiled or patterned background",
+            "geocities": "An amateur 1990s homepage: unreadable colour clashes",
         },
     },
+    "typography": {
+        "instructions": "How would this site set its type?",
+        "criteria": {
+            "system_sans": "Plain system sans-serif, no personality",
+            "editorial_serif": "A serif for headlines and body, newspaper-like",
+            "display_condensed": "Big condensed headlines against small body text",
+            "monospace": "Monospace throughout, technical and utilitarian",
+            "novelty": "Novelty faces: Comic Sans, Papyrus, Impact, anything goes",
+        },
+    },
+    "ornament": {
+        "instructions": "How decorated is this page beyond its content?",
+        "criteria": {
+            "none": "No ornament at all; whitespace does the work",
+            "restrained": "A rule, a border, one accent flourish",
+            "corporate": "Cards, soft shadows, gradients, rounded corners",
+            "busy": "Badges, borders, boxes and dividers competing for attention",
+            "maximal": "Every surface decorated; animation, glitter, clashing borders",
+        },
+    },
+}
+
+# Longer instructions for the writer, where the short label JEV picks from is
+# not enough to actually produce the look.
+DETAIL = {
+    ("palette", "geocities"): (
+        "an amateur 1996 GeoCities homepage. Tiled or starfield background faked in CSS "
+        "(repeating-linear-gradient or radial-gradient), clashing saturated colours such as "
+        "lime text on purple or red on teal, coloured <hr> dividers, visible table-style "
+        "borders, text-shadow on headings, rainbow gradient title text, and everything "
+        "centre-aligned. Add at least one CSS-animated scrolling or blinking element. It "
+        "must look enthusiastically hand-made and be genuinely hard to read. Do not tidy it up"
+    ),
+    ("palette", "garish"): (
+        "clashing bright colours on a patterned or tiled CSS background, with borders and "
+        "backgrounds fighting each other"
+    ),
+    ("palette", "neon_terminal"): (
+        "near-black background with neon green or cyan text, monospace, scanline or glow "
+        "effects done in CSS"
+    ),
+    ("typography", "novelty"): (
+        "novelty typefaces used sincerely: Comic Sans MS, Papyrus, Impact or Brush Script, "
+        "mixed sizes, some text in ALL CAPS, occasional letter-spacing abuse"
+    ),
+    ("ornament", "maximal"): (
+        "decorate every surface: multiple competing borders, CSS glitter or sparkle effects, "
+        "animated gradients, award badges, 'best viewed in' notices, divider graphics drawn "
+        "in CSS, and at least one thing that moves"
+    ),
+    ("ornament", "busy"): (
+        "lots of badges, boxes, borders and dividers competing for attention"
+    ),
 }
 
 # score: an ordered dial. The fractional answer is the useful part.
@@ -136,7 +193,7 @@ def build_questions(extra: dict | None = None) -> dict:
 
 
 # Decided once per site, then inherited, so every page of a site looks related.
-IDENTITY_KEYS = ("archetype", "layout", "palette", "era")
+IDENTITY_KEYS = ("archetype", "layout", "palette", "typography", "ornament", "era")
 
 
 class BlueprintError(RuntimeError):
@@ -192,15 +249,14 @@ class Blueprint:
 
     def directives(self) -> list[str]:
         lines = []
-        archetype = self._choice("archetype")
-        if archetype:
-            lines.append(f"Site type: {CHOICE_QUESTIONS['archetype']['criteria'].get(archetype, archetype)}")
-        layout = self._choice("layout")
-        if layout:
-            lines.append(f"Layout: {CHOICE_QUESTIONS['layout']['criteria'].get(layout, layout)}")
-        palette = self._choice("palette")
-        if palette:
-            lines.append(f"Colour: {CHOICE_QUESTIONS['palette']['criteria'].get(palette, palette)}")
+        labels = {"archetype": "Site type", "layout": "Layout", "palette": "Colour",
+                  "typography": "Typography", "ornament": "Decoration"}
+        for key, label in labels.items():
+            choice = self._choice(key)
+            if not choice:
+                continue
+            text = DETAIL.get((key, choice)) or CHOICE_QUESTIONS[key]["criteria"].get(choice, choice)
+            lines.append(f"{label}: {text}")
         for key, label in (("era", "Era"), ("ad_density", "Advertising"), ("text_density", "Text density")):
             if key in self.answers:
                 lines.append(f"{label}: {self._score_phrase(key)}")

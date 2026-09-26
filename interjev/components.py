@@ -33,6 +33,48 @@ PALETTES = {
         "bg": "#fffbe6", "fg": "#10007a", "muted": "#7a2f00", "rule": "#ff8a00",
         "accent": "#d5006d", "card": "#e8ffe8", "shadow": "2px 2px 0 #10007a",
     },
+    "newsprint": {
+        "bg": "#fdfdfb", "fg": "#1a1a1a", "muted": "#5f5f5f", "rule": "#c9c9c4",
+        "accent": "#333333", "card": "#f4f4f0", "shadow": "none",
+    },
+    "pastel_soft": {
+        "bg": "#fdf7fb", "fg": "#3d3350", "muted": "#8a7fa0", "rule": "#ecdff0",
+        "accent": "#c084c8", "card": "#f7eefa", "shadow": "0 2px 10px rgba(180,140,200,.15)",
+    },
+    "neon_terminal": {
+        "bg": "#05070a", "fg": "#33ff9e", "muted": "#1f9c68", "rule": "#123a2a",
+        "accent": "#4df3ff", "card": "#0a1016", "shadow": "0 0 8px rgba(51,255,158,.25)",
+    },
+    "geocities": {
+        "bg": "#000080", "fg": "#ffff00", "muted": "#00ffcc", "rule": "#ff00ff",
+        "accent": "#00ff00", "card": "#800080", "shadow": "3px 3px 0 #ff0000",
+        "extra": """
+body { background-image:
+    repeating-linear-gradient(45deg,#000080 0 12px,#1a1aa0 12px 24px),
+    radial-gradient(circle at 20% 30%,#fff 0 1px,transparent 1px);
+  background-size:34px 34px,90px 90px; text-align:center;
+  font-family:"Comic Sans MS","Chalkboard SE",cursive; }
+.wrap { background:#800080; border:6px ridge #00ff00; padding:14px; }
+h1 { color:#ff0; text-shadow:2px 2px 0 #f0f,-2px -2px 0 #0ff;
+  background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f);
+  -webkit-background-clip:text; letter-spacing:.04em; }
+h2 { color:#0f0; text-decoration:underline wavy #ff0; }
+a { color:#00ffff; font-weight:700; }
+a:visited { color:#ff00ff; }
+hr { border:0; height:6px; background:repeating-linear-gradient(90deg,#f00 0 10px,#ff0 10px 20px,#0f0 20px 30px); }
+.card,.note { border:4px outset #0ff; background:#004040; }
+.byline,.tagline,.footer { color:#0ff; }
+.kicker { color:#ff0; background:#f0f; display:inline-block; padding:2px 8px; }
+.counter { background:#000; color:#0f0; border:2px inset #888; }
+@keyframes jevblink { 50% { opacity:.15; } }
+@keyframes jevslide { from { transform:translateX(100%); } to { transform:translateX(-100%); } }
+.construction, .note strong { animation:jevblink 1s steps(1) infinite; color:#ff0 !important; }
+.masthead { overflow:hidden; }
+.masthead .tagline { display:inline-block; white-space:nowrap;
+  animation:jevslide 11s linear infinite; }
+[data-slot] { color:inherit; }
+""",
+    },
 }
 
 # era (JEV's fractional `era` score, rounded) -> typography and chrome.
@@ -60,6 +102,7 @@ def stylesheet(palette: str, era_level: int, text_density: float) -> str:
     e = ERAS.get(era_level) or ERAS[2]
     # Denser text means tighter leading and a wider measure.
     lh = round(float(e["lh"]) - 0.12 * max(0.0, text_density - 1.0), 2)
+    extra = p.get("extra", "")
     return f"""
 :root {{
   --bg:{p['bg']}; --fg:{p['fg']}; --muted:{p['muted']}; --rule:{p['rule']};
@@ -113,6 +156,7 @@ nav.side {{ display:flex; flex-direction:column; gap:8px; }}
 .counter {{ font-family:ui-monospace,Menlo,monospace; background:var(--fg); color:var(--bg);
   padding:2px 8px; border-radius:3px; letter-spacing:.2em; }}
 .share a {{ display:inline-block; margin-right:10px; font-size:.85em; }}
+{extra}
 
 /* Suspense: every slot is a shimmer until its copy streams in. */
 [data-slot]:empty:not(.done)::after {{
