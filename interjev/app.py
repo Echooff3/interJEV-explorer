@@ -1,6 +1,7 @@
 """interJEV Explorer: a browser for websites that JEV imagines on demand."""
 
 import json
+import random
 import re
 import threading
 import time
@@ -49,6 +50,22 @@ document.title=a?(b?a+' \u2014 '+b:a):b;}
 function __jdone(){var n=document.querySelectorAll('[data-slot]');
 for(var i=0;i<n.length;i++)n[i].classList.add('done');}
 </script>"""
+
+# "I'm Feeling Vibey" with an empty box picks one of these rather than refusing.
+VIBES = [
+    "haunted lighthouse bed and breakfast",
+    "competitive snail racing league",
+    "1998 geocities fan page for toasters",
+    "society for the preservation of roundabouts",
+    "amateur lichen photography quarterly",
+    "underground escalator enthusiasts forum",
+    "mail order sea monkey conspiracy",
+    "regional crisp flavour rankings",
+    "abandoned funicular railways of europe",
+    "competitive hedge maze design",
+    "vintage fire alarm collectors guild",
+    "the last remaining pneumatic tube network",
+]
 
 VISITOR_COOKIE = "jev_vid"
 RECORD_COOKIE = "jev_record"  # "off" when the visitor opted out on the startup notice
@@ -133,9 +150,8 @@ def create_app(client_factory=get_client, recorder=None) -> Flask:
 
     @app.get("/lucky")
     def lucky():
-        q = request.args.get("q", "").strip()
-        if not q:
-            return redirect("/home")
+        # An empty box is the whole point of this button: vibe them somewhere.
+        q = request.args.get("q", "").strip() or random.choice(VIBES)
         try:
             items = run_search(q)
         except JEVError as exc:

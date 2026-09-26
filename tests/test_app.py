@@ -1,8 +1,10 @@
 import json
+import re
 
 import pytest
 
 from interjev import create_app
+from interjev.app import VIBES
 
 
 class FakeJEV:
@@ -96,6 +98,21 @@ def test_go_routes_urls_and_searches(client):
 
 def test_lucky_goes_to_first_result(client):
     assert client.get("/lucky?q=snails").headers["Location"] == "/site/snailweekly.net/2026/finals"
+
+
+def test_lucky_with_no_query_still_vibes(client, jev):
+    """An empty box is the point of the button: it must not bounce back home."""
+    resp = client.get("/lucky")
+    assert resp.headers["Location"].startswith("/site/")
+    asked = jev.calls[-1][1][-1]["content"]
+    assert any(v in asked for v in VIBES)
+
+
+def test_vibey_button_skips_field_validation(client):
+    """The shared input is `required`, so the button must opt out of it."""
+    page = client.get("/home").get_data(as_text=True)
+    button = re.search(r'<button[^>]*formaction="/lucky"[^>]*>', page).group(0)
+    assert "formnovalidate" in button
 
 
 def test_missing_config_shows_cannot_display_page():
