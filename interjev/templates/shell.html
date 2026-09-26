@@ -30,6 +30,8 @@
   .logo { width: 28px; height: 28px; flex: none; overflow: visible; }
   .orbit { stroke-dasharray: 100 0; }
   .loading .orbit { stroke-dasharray: 34 16; animation: whirl .9s linear infinite; }
+  /* Waiting on JEV: covers the blueprint call, which happens before any HTML exists. */
+  body.loading, body.loading #view, body.loading button { cursor: progress; }
   @keyframes whirl { to { stroke-dashoffset: -50; } }
   button { border: 0; background: transparent; color: var(--text); width: 32px; height: 32px;
            border-radius: 8px; font-size: 16px; cursor: pointer; flex: none; }
@@ -225,6 +227,7 @@ function hrefToDisplay(href) {
 function setLoading(on, target) {
   loading = on;
   bar.classList.toggle('loading', on);
+  document.body.classList.toggle('loading', on);
   if (on) pending = target || hovered || pending;
   else pending = '';
   renderStatus();
@@ -262,9 +265,25 @@ function watchLinks(doc) {
   }, true);
 }
 
+// A generated page is a separate document: the shell's CSS cannot reach into it,
+// so while it is still streaming we put a style element inside it.
+function setWaitCursor(doc, on) {
+  if (!doc) return;
+  let el = doc.getElementById('jev-wait-cursor');
+  if (on && !el) {
+    el = doc.createElement('style');
+    el.id = 'jev-wait-cursor';
+    el.textContent = '*,*::before,*::after{cursor:progress!important}';
+    (doc.head || doc.documentElement).appendChild(el);
+  } else if (!on && el) {
+    el.remove();
+  }
+}
+
 function sync() {
   const loc = currentLocation();
   if (!loc || loc.href === 'about:blank') return;
+  try { setWaitCursor(view.contentDocument, view.contentDocument.readyState !== 'complete'); } catch (e) {}
   if (document.activeElement !== address) address.value = localToDisplay(loc.pathname, loc.search);
   regen.disabled = !loc.pathname.startsWith('/site/');
   try {
@@ -336,6 +355,7 @@ address.addEventListener('focus', () => address.select());
     rec.hidden = !record;
     if (!started) {
       started = true;
+      setLoading(true, localToDisplay(view.dataset.start));
       view.src = view.dataset.start;
       document.dispatchEvent(new Event('jev:noticed'));
     }
