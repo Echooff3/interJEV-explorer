@@ -54,12 +54,15 @@ class JEV:
         }
 
     def complete(self, messages: list[dict]) -> str:
-        resp = requests.post(
-            OPENROUTER_URL,
-            headers=self._headers(),
-            json=self._payload(messages, stream=False),
-            timeout=self.timeout,
-        )
+        try:
+            resp = requests.post(
+                OPENROUTER_URL,
+                headers=self._headers(),
+                json=self._payload(messages, stream=False),
+                timeout=self.timeout,
+            )
+        except requests.RequestException as exc:
+            raise JEVError(f"Could not reach OpenRouter: {exc}") from exc
         if resp.status_code != 200:
             raise JEVError(f"OpenRouter returned {resp.status_code}: {resp.text[:500]}")
         data = resp.json()
@@ -69,18 +72,30 @@ class JEV:
             raise JEVError(f"Unexpected OpenRouter response: {json.dumps(data)[:500]}") from exc
 
     def stream(self, messages: list[dict]) -> Iterator[str]:
-        resp = requests.post(
-            OPENROUTER_URL,
-            headers=self._headers(),
-            json=self._payload(messages, stream=True),
-            timeout=self.timeout,
-            stream=True,
-        )
+        try:
+            resp = requests.post(
+                OPENROUTER_URL,
+                headers=self._headers(),
+                json=self._payload(messages, stream=True),
+                timeout=self.timeout,
+                stream=True,
+            )
+        except requests.RequestException as exc:
+            raise JEVError(f"Could not reach OpenRouter: {exc}") from exc
         if resp.status_code != 200:
             raise JEVError(f"OpenRouter returned {resp.status_code}: {resp.text[:500]}")
         resp.encoding = "utf-8"
         with resp:
-            for line in resp.iter_lines(decode_unicode=True):
+            # Iterated lazily: buffering the whole stream would stop pages
+            # rendering progressively, which is the point of streaming.
+            lines = resp.iter_lines(decode_unicode=True)
+            while True:
+                try:
+                    line = next(lines)
+                except StopIteration:
+                    return
+                except requests.RequestException as exc:
+                    raise JEVError(f"OpenRouter stream ended early: {exc}") from exc
                 # SSE: skip keep-alive comments (": OPENROUTER PROCESSING") and blanks.
                 if not line or not line.startswith("data:"):
                     continue
