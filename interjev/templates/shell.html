@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>interJEV Explorer</title>
+<style>
+  :root {
+    --chrome: #e9ecf2; --chrome-edge: #c9ced8; --field: #fff; --text: #1d2330;
+    --muted: #6b7384; --accent: #4f5dff; --btn-hover: #d9dee8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --chrome: #23262e; --chrome-edge: #353945; --field: #16181d; --text: #e6e8ee;
+      --muted: #9097a6; --accent: #8c95ff; --btn-hover: #323643;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--chrome); color: var(--text);
+         font: 14px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+         border-bottom: 1px solid var(--chrome-edge); position: relative; }
+  .brand { font-weight: 700; letter-spacing: -.02em; margin-right: 6px; white-space: nowrap; }
+  .brand span { color: var(--accent); }
+  button { border: 0; background: transparent; color: var(--text); width: 32px; height: 32px;
+           border-radius: 8px; font-size: 16px; cursor: pointer; flex: none; }
+  button:hover:not(:disabled) { background: var(--btn-hover); }
+  button:disabled { opacity: .35; cursor: default; }
+  form { flex: 1; display: flex; min-width: 0; }
+  #address { flex: 1; min-width: 0; height: 34px; border-radius: 17px; border: 1px solid var(--chrome-edge);
+             background: var(--field); color: var(--text); padding: 0 14px; font: inherit; outline: none; }
+  #address:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .progress { position: absolute; left: 0; bottom: -1px; height: 2px; width: 0; background: var(--accent);
+              opacity: 0; transition: opacity .3s; }
+  .loading .progress { opacity: 1; animation: grow 12s cubic-bezier(.1,.7,.3,1) forwards; }
+  @keyframes grow { from { width: 0 } to { width: 92% } }
+  .status { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+  @media (max-width: 600px) { .brand, .status { display: none; } }
+</style>
+</head>
+<body>
+  <div class="bar" id="bar">
+    <div class="brand">inter<span>JEV</span></div>
+    <button id="back" title="Back">&#8592;</button>
+    <button id="fwd" title="Forward">&#8594;</button>
+    <button id="reload" title="Reload">&#8635;</button>
+    <button id="home" title="Home">&#8962;</button>
+    <form id="nav" autocomplete="off">
+      <input id="address" spellcheck="false" placeholder="Search interJEV or type a URL">
+    </form>
+    <button id="regen" title="Ask JEV to reimagine this page" disabled>&#10024;</button>
+    <span class="status" id="status"></span>
+    <div class="progress"></div>
+  </div>
+  <iframe id="view" name="view" src="{{ start }}"></iframe>
+
+<script>
+const view = document.getElementById('view');
+const address = document.getElementById('address');
+const bar = document.getElementById('bar');
+const status = document.getElementById('status');
+const regen = document.getElementById('regen');
+
+function localToDisplay(loc) {
+  const path = loc.pathname, qs = loc.search;
+  if (path === '/home') return '';
+  if (path === '/results') return 'interjev://search' + qs;
+  const m = path.match(/^\/site\/([^/]+)(\/.*)?$/);
+  if (m) {
+    let rest = decodeURI(m[2] || '/');
+    return 'https://' + m[1] + rest + qs.replace(/([?&])_regen=1&?/, '$1').replace(/[?&]$/, '');
+  }
+  return path + qs;
+}
+
+function setLoading(on) {
+  bar.classList.toggle('loading', on);
+  status.textContent = on ? 'JEV is imagining…' : '';
+  if (on) { // restart the progress animation
+    const p = bar.querySelector('.progress');
+    p.style.animation = 'none'; p.offsetWidth; p.style.animation = '';
+  }
+}
+
+function currentLocation() {
+  try { return view.contentWindow.location; } catch (e) { return null; }
+}
+
+function sync() {
+  const loc = currentLocation();
+  if (!loc || loc.href === 'about:blank') return;
+  if (document.activeElement !== address) address.value = localToDisplay(loc);
+  regen.disabled = !loc.pathname.startsWith('/site/');
+  try {
+    const t = view.contentDocument.title;
+    document.title = (t ? t + ' — ' : '') + 'interJEV Explorer';
+  } catch (e) {}
+}
+
+view.addEventListener('load', () => {
+  setLoading(false);
+  sync();
+  try {
+    view.contentWindow.addEventListener('beforeunload', () => setLoading(true));
+  } catch (e) {}
+});
+setInterval(sync, 400); // keep the bar right while a page is still streaming in
+
+document.getElementById('nav').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = address.value.trim();
+  if (!v) return;
+  address.blur();
+  setLoading(true);
+  view.src = '/go?u=' + encodeURIComponent(v);
+});
+document.getElementById('back').onclick = () => view.contentWindow.history.back();
+document.getElementById('fwd').onclick = () => view.contentWindow.history.forward();
+document.getElementById('reload').onclick = () => { setLoading(true); view.contentWindow.location.reload(); };
+document.getElementById('home').onclick = () => { view.src = '/home'; };
+regen.onclick = () => {
+  const loc = currentLocation();
+  if (!loc || !loc.pathname.startsWith('/site/')) return;
+  const sep = loc.search ? '&' : '?';
+  setLoading(true);
+  view.contentWindow.location.href = loc.pathname + loc.search + sep + '_regen=1';
+};
+address.addEventListener('focus', () => address.select());
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>interJEV Search</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='search.css') }}">
+</head>
+<body>
+  <main class="home">
+    <h1 class="logo">inter<span>JEV</span></h1>
+    <p class="tagline">Search a web that doesn't exist — yet.</p>
+    <form action="/results" method="get" autocomplete="off">
+      <div class="searchbox">
+        <input name="q" autofocus required aria-label="Search">
+        <button title="Search" aria-label="Search">&#9906;</button>
+      </div>
+      <div class="actions">
+        <button type="submit">interJEV Search</button>
+        <button type="submit" formaction="/lucky">I'm Feeling Vibey</button>
+      </div>
+    </form>
+    <div class="ideas">
+      Try:
+      <a href="/results?q=haunted+lighthouse+bed+and+breakfast">haunted lighthouse B&amp;B</a>
+      <a href="/results?q=competitive+snail+racing+league">snail racing league</a>
+      <a href="/results?q=1998+geocities+fan+page+for+toasters">toaster fan pages</a>
+    </div>
+  </main>
+</body>
+</html>

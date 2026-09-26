@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JEV is unavailable</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='search.css') }}">
+</head>
+<body>
+  <main class="home">
+    <h1 class="logo">inter<span>JEV</span></h1>
+    <div class="error" style="max-width:560px">
+      <strong>JEV couldn't be reached.</strong><br>{{ message }}
+      <p style="margin-bottom:0">Check <code>OPENROUTER_API_KEY</code> and <code>JEV_MODEL</code> in your <code>.env</code>,
+      or run with <code>JEV_MOCK=1</code> to click around offline.</p>
+    </div>
+    <p><a href="/home">Back to search</a></p>
+  </main>
+</body>
+</html>
