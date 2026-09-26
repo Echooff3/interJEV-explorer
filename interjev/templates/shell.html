@@ -57,6 +57,23 @@
   .statusbar .msg span { overflow: hidden; text-overflow: ellipsis; }
   .statusbar .zone, .statusbar .zoom { border-left: 1px solid var(--chrome-edge); }
   @media (max-width: 600px) { .brand span, form label, .statusbar .zoom { display: none; } }
+
+  /* Startup notice, dressed as a classic "Security Alert" dialog */
+  .modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
+           background: rgba(10, 20, 40, .45); z-index: 10; }
+  .modal[hidden] { display: none; }
+  .dialog { width: min(440px, 100%); background: #ece9d8; color: #000; border: 1px solid #0831d9; border-radius: 8px 8px 2px 2px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, .35); font: 13px Tahoma, "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  .dialog .titlebar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; color: #fff; font-weight: 700;
+                      background: linear-gradient(#0a5ae8, #0843c6 45%, #0636b0); text-shadow: 1px 1px #0a2b7a; }
+  .dialog .titlebar span { flex: 1; }
+  .dialog .body { display: flex; gap: 14px; padding: 16px 16px 6px; line-height: 1.45; }
+  .dialog .body .icon { font-size: 30px; line-height: 1; }
+  .dialog .body p { margin: 0 0 10px; }
+  .dialog .buttons { display: flex; justify-content: flex-end; padding: 6px 16px 14px; }
+  .dialog .buttons button { width: 84px; height: 24px; border-radius: 3px; border: 1px solid #003c74; font: inherit;
+                            background: linear-gradient(#fff, #e3e0d0); color: #000; }
+  .dialog .buttons button:hover { background: linear-gradient(#fff, #f3d99a); }
 </style>
 </head>
 <body>
@@ -92,6 +109,22 @@
   </div>
 
   <iframe id="view" name="view" src="{{ start }}"></iframe>
+
+  <div class="modal" id="notice" role="dialog" aria-modal="true" aria-labelledby="notice-title">
+    <div class="dialog">
+      <div class="titlebar"><span id="notice-title">Security Alert</span></div>
+      <div class="body">
+        <div class="icon" aria-hidden="true">&#9888;&#65039;</div>
+        <div>
+          <p><strong>Heads up: this is a demo, and we're recording.</strong></p>
+          <p>Everything you search for and every page JEV creates is logged so we can see what JEV
+             comes up with.</p>
+          <p>Please don't type anything personal or sensitive.</p>
+        </div>
+      </div>
+      <div class="buttons"><button id="notice-ok">OK</button></div>
+    </div>
+  </div>
 
   <div class="statusbar">
     <div class="msg"><span id="status">Done</span></div>
@@ -212,6 +245,14 @@ regen.onclick = () => {
 };
 address.addEventListener('focus', () => address.select());
 
+// Startup notice: shown every time the browser opens.
+(() => {
+  const notice = document.getElementById('notice');
+  const ok = document.getElementById('notice-ok');
+  ok.onclick = () => { notice.hidden = true; address.focus(); };
+  ok.focus();
+})();
+
 // The question every browser of a certain era asked on launch.
 (() => {
   const promptBar = document.getElementById('default-prompt');
@@ -219,7 +260,10 @@ address.addEventListener('focus', () => address.select());
   let asked = false;
   try { asked = localStorage.getItem(KEY) === '1'; } catch (e) {}
   if (asked) return;
-  promptBar.hidden = false;
+  // Wait until the recording notice has been acknowledged.
+  const show = () => { promptBar.hidden = false; };
+  if (document.getElementById('notice').hidden) show();
+  else document.getElementById('notice-ok').addEventListener('click', show);
   const remember = () => { try { localStorage.setItem(KEY, '1'); } catch (e) {} };
   document.getElementById('default-no').onclick = () => { promptBar.hidden = true; remember(); };
   document.getElementById('default-yes').onclick = () => {

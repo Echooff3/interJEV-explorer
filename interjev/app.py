@@ -3,6 +3,8 @@
 import json
 import re
 import threading
+import time
+import uuid
 from urllib.parse import urlencode, urlsplit
 
 from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
@@ -18,6 +20,7 @@ from .rewrite import (
     to_fake,
     to_local,
 )
+from .recorder import make_recorder
 from .store import Store
 
 # Generated pages may not reach the real internet. Inline styles/scripts and
@@ -29,9 +32,13 @@ SITE_CSP = (
 )
 
 
-def create_app(client_factory=get_client) -> Flask:
+VISITOR_COOKIE = "jev_vid"
+
+
+def create_app(client_factory=get_client, recorder=None) -> Flask:
     app = Flask(__name__)
     store = Store()
+    recorder = recorder or make_recorder()
     search_cache: dict[str, list[dict]] = {}
     search_lock = threading.Lock()
 
@@ -42,7 +49,11 @@ def create_app(client_factory=get_client) -> Flask:
         start = request.args.get("start", "/home")
         if not start.startswith("/") or start.startswith("//"):
             start = "/home"
-        return render_template("shell.html", start=start)
+        resp = app.make_response(render_template("shell.html", start=start))
+        if not request.cookies.get(VISITOR_COOKIE):
+            # Anonymous id so analytics can tell one visitor's searches from another's.
+            resp.set_cookie(VISITOR_COOKIE, uuid.uuid4().hex, max_age=365 * 86400, samesite="Lax", httponly=True)
+        return resp
 
     @app.get("/home")
     def home():
@@ -88,11 +99,23 @@ def create_app(client_factory=get_client) -> Flask:
     def run_search(q: str) -> list[dict]:
         key = q.lower()
         with search_lock:
-            if key in search_cache:
-                return search_cache[key]
-        client = client_factory()
-        raw = client.complete(prompts.search_messages(q))
-        items = parse_results(raw)
+            cached = search_cache.get(key)
+        if cached is not None:
+            recorder.record("searches", visitor_id=visitor_id(), query=q, results=cached, cached=True)
+            return cached
+        started = time.monotonic()
+        model = None
+        try:
+            client = client_factory()
+            model = getattr(client, "model", None)
+            raw = client.complete(prompts.search_messages(q))
+            items = parse_results(raw)
+        except JEVError as exc:
+            recorder.record("searches", visitor_id=visitor_id(), query=q, model=model,
+                            duration_ms=elapsed_ms(started), error=str(exc))
+            raise
+        recorder.record("searches", visitor_id=visitor_id(), query=q, results=items, model=model,
+                        duration_ms=elapsed_ms(started))
         for item in items:
             host = urlsplit(item["url"]).hostname
             store.add_note(host, f"Search result for \"{q}\": {item['title']} — {item['snippet']}")
@@ -144,6 +167,7 @@ def create_app(client_factory=get_client) -> Flask:
             return error_page(str(exc))
 
         site_info = store.site(host)
+        referrer = referrer_info()
         messages = prompts.page_messages(
             url,
             method=request.method,
@@ -151,13 +175,23 @@ def create_app(client_factory=get_client) -> Flask:
             site_notes="\n".join(site_info.notes) or None,
             known_pages=[(p, t) for p, t in site_info.pages.items() if p != "/" + path] or None,
             stylesheet=site_info.stylesheet or None,
-            referrer=referrer_info(),
+            referrer=referrer,
         )
 
         request_method = request.method
+        event = {
+            "visitor_id": visitor_id(),
+            "url": url,
+            "host": host,
+            "method": request_method,
+            "form": form,
+            "referrer": referrer[0] if referrer else search_referrer(),
+            "model": getattr(client, "model", None),
+        }
 
         def generate():
             rw = StreamRewriter(url)
+            started = time.monotonic()
             try:
                 for chunk in client.stream(messages):
                     out = rw.feed(chunk)
@@ -167,6 +201,7 @@ def create_app(client_factory=get_client) -> Flask:
                 if tail:
                     yield tail
             except Exception as exc:  # surface failures inside the page
+                recorder.record("pages", **event, html=rw.html, duration_ms=elapsed_ms(started), error=str(exc))
                 yield (
                     '<div style="font:14px sans-serif;background:#fee;color:#900;'
                     'border:1px solid #c66;padding:12px;margin:12px">'
@@ -174,6 +209,8 @@ def create_app(client_factory=get_client) -> Flask:
                 )
                 return
             page = rw.html
+            recorder.record("pages", **event, title=extract_title(page), html=page,
+                            duration_ms=elapsed_ms(started), error=None if page.strip() else "empty page")
             if not page.strip():
                 yield "<p>JEV returned an empty page. Try regenerating.</p>"
                 return
@@ -192,7 +229,19 @@ def create_app(client_factory=get_client) -> Flask:
         cached = store.get_page(ref_url)
         return ref_url, extract_title(cached) if cached else ""
 
+    def search_referrer():
+        """interjev://search?q=... when the visitor came from a results page (for analytics)."""
+        ref = urlsplit(request.referrer or "")
+        return f"interjev://search?{ref.query}" if ref.path == "/results" else None
+
+    def visitor_id():
+        return request.cookies.get(VISITOR_COOKIE)
+
     # ---- misc ------------------------------------------------------------
+
+    @app.get("/healthz")
+    def healthz():
+        return "ok"
 
     @app.get("/placeholder.svg")
     def placeholder():
@@ -215,6 +264,10 @@ def create_app(client_factory=get_client) -> Flask:
         return render_template("error.html", message=message), 502
 
     return app
+
+
+def elapsed_ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
 
 
 def parse_results(raw: str) -> list[dict]:

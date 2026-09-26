@@ -25,6 +25,8 @@ A few nods to Internet Explorer, the browser of yesteryear, are built in:
 - The window title reads "Page Title - interJEV Explorer".
 - The first time you open it, it asks whether you'd like to make interJEV
   Explorer your default browser.
+- On startup, a "Security Alert" dialog warns visitors that their searches and
+  the pages JEV creates are being recorded.
 - When JEV can't be reached, you get "interJEV Explorer cannot display the
   webpage" with "Most likely causes" and a **Diagnose Connection Problems**
   button.
@@ -37,6 +39,9 @@ pip install -r requirements.txt
 cp .env.example .env        # then fill in OPENROUTER_API_KEY and JEV_MODEL
 python -m interjev          # http://127.0.0.1:5000
 ```
+
+`python -m interjev` runs gunicorn. Add `--dev` to use Flask's development
+server instead (Windows always uses it).
 
 JEV runs on [OpenRouter](https://openrouter.ai). Set `JEV_MODEL` to the
 OpenRouter model id you want JEV to use (it's on the model's page, e.g.
@@ -78,9 +83,52 @@ serves canned responses.
 Prompts live in `interjev/prompts.py`, so that's where to go to change JEV's
 personality.
 
+## Recording searches and pages
+
+Every search and every page JEV creates is recorded. Each record includes the
+query or URL, the results or full HTML, the model, how long it took, any
+error, and an anonymous visitor id.
+
+- **Default:** each event is printed to the console as one JSON line starting
+  with `[interjev]`. On Railway, these appear in the deploy logs.
+- **`--capture`** (or `JEV_CAPTURE=1`)**:** events are written to Postgres at
+  `DATABASE_URL`. The `searches` and `pages` tables are created on startup.
+  Writes happen on a background thread, so pages never wait on the database.
+  If a write fails, that event is printed to the console instead.
+
+Some queries to start with:
+
+```sql
+-- What are people searching for?
+SELECT query, count(*) FROM searches GROUP BY query ORDER BY count DESC;
+
+-- The latest pages JEV built, and which search led there
+SELECT created_at, url, title, referrer, duration_ms FROM pages ORDER BY id DESC LIMIT 50;
+
+-- Pull one page's HTML to look at
+SELECT html FROM pages WHERE id = 42;
+```
+
+## Deploying on Railway
+
+1. Create a project from this repo. `railway.json` sets the start command
+   (`python -m interjev`) and the `/healthz` health check.
+2. Add variables `OPENROUTER_API_KEY` and `JEV_MODEL`.
+3. To store events in Postgres:
+   - Add a **Postgres** service to the project.
+   - On the app service, add the variable `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`.
+   - Add `JEV_CAPTURE=1`, or change the start command to `python -m interjev --capture`.
+
+Without step 3, everything is still recorded to the deploy logs.
+
+The app runs as a single process with many threads, because the page cache
+and each site's memory live in memory. Don't scale it to multiple replicas.
+
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
+# optional: also test against a real Postgres (its tables get dropped)
+TEST_DATABASE_URL=postgresql://localhost/interjev_test pytest
 ```
